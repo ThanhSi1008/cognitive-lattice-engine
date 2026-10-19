@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  serverExternalPackages: ["@electric-sql/pglite", "pg"],
+  serverExternalPackages: ["@electric-sql/pglite", "@electric-sql/pglite/vector", "pg"],
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",
