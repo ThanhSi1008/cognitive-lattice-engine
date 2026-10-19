@@ -7,8 +7,8 @@ export function countWords(text: string): number {
   return words.length;
 }
 
-// Anti-rote regex for FSRS cards (Mục 2.2 Phút 18-20)
-export const ANTI_ROTE_REGEX = /(\blà gì\b|\bđịnh nghĩa\b|\bkhái niệm\b|\bwhat is\b|\bdefine\b)/i;
+// Anti-rote regex for FSRS cards (Mục 2.2 Phút 18-20 & State 3.3)
+export const ANTI_ROTE_REGEX = /(?:^|[\s\b.,?!])(là gì|định nghĩa|khái niệm|what is|define)(?:$|[\s\b.,?!])/iu;
 
 // --- 1. Learning Session Schemas ---
 export const LearningSessionSchema = z.object({
