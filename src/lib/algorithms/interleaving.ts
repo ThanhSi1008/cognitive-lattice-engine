@@ -13,6 +13,8 @@ export interface InterleavingCardItem {
   scheduled_days?: number;
   front_prompt?: string;
   back_structure?: string;
+  difficulty?: number;
+  is_leech?: boolean;
 }
 
 export const ALPHA_DOMAIN_WEIGHT = 0.4;

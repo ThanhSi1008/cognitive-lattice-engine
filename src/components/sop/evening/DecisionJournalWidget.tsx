@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import { countWords } from "@/lib/validations";
-import { Lock, CheckCircle2, ShieldCheck, Sliders, AlertCircle, FileText } from "lucide-react";
+import { DecisionRedflagsResult } from "@/lib/ai/socratic-engine";
+import { Lock, CheckCircle2, ShieldCheck, Sliders, AlertCircle, FileText, Sparkles, AlertTriangle } from "lucide-react";
 
 export interface DecisionJournalData {
   id?: string;
@@ -74,6 +75,10 @@ export function DecisionJournalWidget({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [committedRecord, setCommittedRecord] = useState<any | null>(null);
 
+  // Socratic Bias Audit State
+  const [redflagsResult, setRedflagsResult] = useState<DecisionRedflagsResult | null>(null);
+  const [isScanningRedflags, setIsScanningRedflags] = useState(false);
+
   const probSum = probPos + probNeu + probWorst;
   const isProbSumValid = probSum === 100;
 
@@ -84,6 +89,31 @@ export function DecisionJournalWidget({
   const isRejectedValid = rejectedAlts.length >= 2;
 
   const canCommit = isProbSumValid && isProblemFrameValid && isThesisValid && isRejectedValid;
+
+  const handleScanRedflags = async () => {
+    if (!problemFrame.trim() || !primaryThesis.trim() || isScanningRedflags) return;
+    setIsScanningRedflags(true);
+    try {
+      const res = await fetch("/api/ai/decision-redflags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          problemFraming: problemFrame,
+          selectedOption: primaryThesis,
+          discardedOptions: rejectedAlts,
+          probabilityOutcomes: { probPos, probNeu, probWorst },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRedflagsResult(data);
+      }
+    } catch (err) {
+      console.error("Redflags scan error:", err);
+    } finally {
+      setIsScanningRedflags(false);
+    }
+  };
 
   const handleCommitAndLock = async () => {
     if (!canCommit || isSubmitting) return;
@@ -158,141 +188,140 @@ export function DecisionJournalWidget({
           <div className="text-xs font-mono text-cyan-400 uppercase tracking-wider mb-1">
             Phân Hệ Nhật Ký Quyết Định (Phút 16–20) • Farnam Street Standard
           </div>
-          <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Lock className="w-5 h-5 text-cyan-400" />
-            <span>Định Khung Quyết Định & Đo Lường Brier Score Hậu Kiểm</span>
-          </h2>
+          <h2 className="text-lg font-bold text-white">Lập Hồ Sơ Quyết Định Bất Biến</h2>
+          <p className="text-xs text-slate-400 mt-1 max-w-2xl">
+            Buộc người ra quyết định công khai các phương án bị loại bỏ và phân phối xác suất trước khi kết quả xảy ra.
+          </p>
         </div>
-
-        <span
-          className={`text-xs font-mono px-3 py-1 rounded-full border ${
-            isProbSumValid
-              ? "bg-emerald-950/80 text-emerald-400 border-emerald-800"
-              : "bg-rose-950/80 text-rose-400 border-rose-800"
-          }`}
-        >
-          Tổng xác suất: {probSum}% / 100% (chk_probability_sum_100)
-        </span>
       </div>
 
-      {/* 1. Trạng thái sinh lý & thiên kiến cảm xúc */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800/80 text-xs">
+      {/* 1. Trạng thái sinh lý & cảm xúc */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800/80 text-xs">
         <div>
-          <label className="text-slate-400">Mức độ căng thẳng (Stress: 1 - 10)</label>
+          <label className="text-slate-400">Mức độ căng thẳng (1-10): {stressLevel}</label>
           <input
-            type="number"
+            type="range"
             min={1}
             max={10}
             value={stressLevel}
             onChange={(e) => setStressLevel(parseInt(e.target.value, 10))}
-            className="w-full mt-1 bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200"
+            className="w-full mt-2 accent-cyan-400"
           />
         </div>
         <div>
-          <label className="text-slate-400">Giấc ngủ đêm qua (Giờ)</label>
+          <label className="text-slate-400">Thời gian ngủ đêm qua: {sleepHours}h</label>
           <input
             type="number"
             step="0.5"
+            min={0}
+            max={16}
             value={sleepHours}
             onChange={(e) => setSleepHours(parseFloat(e.target.value))}
-            className="w-full mt-1 bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200"
+            className="w-full mt-1.5 bg-slate-900 border border-slate-800 rounded p-1.5 text-slate-200"
           />
         </div>
         <div>
-          <label className="text-slate-400">Thiên kiến cảm xúc hiện hành</label>
-          <input
-            type="text"
+          <label className="text-slate-400">Thiên kiến nhận diện lúc ra quyết định:</label>
+          <select
             value={emotionalBias}
             onChange={(e) => setEmotionalBias(e.target.value)}
-            className="w-full mt-1 bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-slate-200"
-          />
+            className="w-full mt-1.5 bg-slate-900 border border-slate-800 rounded p-1.5 text-slate-200"
+          >
+            <option>Thiên kiến hành động (Action Bias)</option>
+            <option>Sợ bỏ lỡ cơ hội (FOMO)</option>
+            <option>Quá tự tin (Overconfidence)</option>
+            <option>Mệt mỏi nhận thức (Decision Fatigue)</option>
+            <option>Cân bằng & Tỉnh táo (Neutral Rational)</option>
+          </select>
         </div>
       </div>
 
       {/* 2. Định khung vấn đề (>= 40 từ) */}
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2">
         <div className="flex justify-between items-center text-xs">
-          <label className="text-slate-300 font-medium">Định khung vấn đề (Problem Frame) *</label>
-          <span className={`font-mono text-[11px] ${isProblemFrameValid ? "text-emerald-400" : "text-amber-400"}`}>
-            {problemWords} / 40 từ tối thiểu
+          <label className="font-semibold text-slate-200">
+            Định khung vấn đề & Bối cảnh (Problem Frame & Context) *
+          </label>
+          <span
+            className={`font-mono text-[11px] px-2 py-0.5 rounded border ${
+              isProblemFrameValid
+                ? "bg-emerald-950 text-emerald-400 border-emerald-800"
+                : "bg-slate-800 text-amber-400 border-slate-700"
+            }`}
+          >
+            {problemWords} / 40 từ tối thiểu (chk_problem_frame_depth)
           </span>
         </div>
         <textarea
           rows={3}
           value={problemFrame}
           onChange={(e) => setProblemFrame(e.target.value)}
-          placeholder="Mô tả cụ thể bài toán, bối cảnh quyết định và điều kiện biên (tối thiểu 40 từ)..."
+          placeholder="Mô tả bản chất vấn đề đang giải quyết (tối thiểu 40 từ). Điểm nghẽn cốt lõi là gì? Các biến số nào đang tác động trực tiếp?..."
           className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 resize-none leading-relaxed"
         />
       </div>
 
-      {/* 3. Quyết định lựa chọn & Giả thuyết chính */}
-      <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-slate-300 font-medium">
-          Quyết định lựa chọn & Giả thuyết chính (Primary Thesis) *
+      {/* 3. Luận điểm lựa chọn chính */}
+      <div className="flex flex-col gap-2">
+        <label className="text-xs font-semibold text-slate-200">
+          Phương án lựa chọn & Luận điểm chính (Primary Thesis) *
         </label>
         <input
           type="text"
           value={primaryThesis}
           onChange={(e) => setPrimaryThesis(e.target.value)}
-          placeholder="Luận điểm chính xác bạn quyết định chọn áp dụng..."
-          className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+          placeholder="Phương án hành động cụ thể bạn quyết định thực thi..."
+          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
         />
       </div>
 
-      {/* 4. Ba thanh trượt xác suất (Tổng = 100%) */}
+      {/* 4. Phân bổ xác suất (Tổng đúng 100%) */}
       <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/80 flex flex-col gap-3 text-xs">
         <div className="flex justify-between items-center">
-          <span className="font-semibold text-slate-200 flex items-center gap-1.5">
-            <Sliders className="w-4 h-4 text-cyan-400" />
-            <span>Phân bổ xác suất 3 kịch bản tương lai</span>
+          <span className="font-semibold text-slate-200">Phân bổ xác suất kịch bản (Tổng phải bằng đúng 100%):</span>
+          <span
+            className={`font-mono font-bold px-2 py-0.5 rounded border ${
+              isProbSumValid
+                ? "bg-emerald-950 text-emerald-400 border-emerald-800"
+                : "bg-rose-950 text-rose-400 border-rose-800"
+            }`}
+          >
+            Tổng: {probSum}% {isProbSumValid ? "✓ Hợp lệ" : "(Phải bằng 100%)"}
           </span>
-          <span className="font-mono text-slate-400">Tổng: {probSum}%</span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <div className="flex justify-between text-slate-400 mb-1">
-              <span>Tích cực (Positive)</span>
-              <span className="font-mono text-emerald-400">{probPos}%</span>
-            </div>
+            <label className="text-emerald-400">Kịch bản Tốt (Positive): {probPos}%</label>
             <input
               type="range"
               min={0}
               max={100}
               value={probPos}
               onChange={(e) => setProbPos(parseInt(e.target.value, 10))}
-              className="w-full accent-emerald-500"
+              className="w-full mt-1.5 accent-emerald-500"
             />
           </div>
-
           <div>
-            <div className="flex justify-between text-slate-400 mb-1">
-              <span>Trung hòa (Neutral)</span>
-              <span className="font-mono text-cyan-400">{probNeu}%</span>
-            </div>
+            <label className="text-cyan-400">Kịch bản Trung tính (Neutral): {probNeu}%</label>
             <input
               type="range"
               min={0}
               max={100}
               value={probNeu}
               onChange={(e) => setProbNeu(parseInt(e.target.value, 10))}
-              className="w-full accent-cyan-500"
+              className="w-full mt-1.5 accent-cyan-500"
             />
           </div>
-
           <div>
-            <div className="flex justify-between text-slate-400 mb-1">
-              <span>Tiêu cực (Worst-Case)</span>
-              <span className="font-mono text-rose-400">{probWorst}%</span>
-            </div>
+            <label className="text-rose-400">Kịch bản Xấu nhất (Worst): {probWorst}%</label>
             <input
               type="range"
               min={0}
               max={100}
               value={probWorst}
               onChange={(e) => setProbWorst(parseInt(e.target.value, 10))}
-              className="w-full accent-rose-500"
+              className="w-full mt-1.5 accent-rose-500"
             />
           </div>
         </div>
@@ -307,6 +336,73 @@ export function DecisionJournalWidget({
             <div className="text-slate-400 text-[11px] italic">Lý do: {alt.rationale_for_rejection} (Nhúng [[{alt.linked_zettel_uid}]])</div>
           </div>
         ))}
+      </div>
+
+      {/* AI Socratic Redflags Scan Panel */}
+      <div className="bg-slate-950 p-4 rounded-xl border border-purple-900/60 flex flex-col gap-3">
+        <div className="flex justify-between items-center text-xs">
+          <div className="flex items-center gap-2 font-semibold text-purple-300">
+            <Sparkles className="w-4 h-4 text-purple-400" />
+            <span>Rà Soát Thiên Kiến & Hệ Quả Cấp 2/3 (AI Socratic Redflags)</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleScanRedflags}
+            disabled={!problemFrame.trim() || !primaryThesis.trim() || isScanningRedflags}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+              problemFrame.trim() && primaryThesis.trim() && !isScanningRedflags
+                ? "bg-purple-900/70 hover:bg-purple-800 text-purple-200 border border-purple-700 cursor-pointer"
+                : "bg-slate-800 text-slate-500 cursor-not-allowed"
+            }`}
+          >
+            {isScanningRedflags ? "Đang quét..." : "Quét Thiên Kiến Trước Khi Khóa"}
+          </button>
+        </div>
+
+        {redflagsResult && (
+          <div className="flex flex-col gap-3 text-xs pt-2 border-t border-slate-800 animate-in fade-in duration-150">
+            {redflagsResult.identifiedBiases.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                <span className="font-semibold text-amber-400 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Phát Hiện Thiên Kiến Nhận Thức Tiềm Ẩn:
+                </span>
+                {redflagsResult.identifiedBiases.map((b, idx) => (
+                  <div key={idx} className="bg-amber-950/30 border border-amber-900/50 p-2.5 rounded text-[11px]">
+                    <div className="font-bold text-amber-300 flex items-center justify-between">
+                      <span>{b.name}</span>
+                      <span className="font-mono text-[9px] px-1.5 py-0.2 rounded bg-amber-900/60 text-amber-200">
+                        Mức rủi ro: {b.severity}
+                      </span>
+                    </div>
+                    <div className="text-slate-300 mt-1">{b.description}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-emerald-400 text-xs">✓ Không phát hiện ngụy biện nhận thức nghiêm trọng.</div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
+              <div className="bg-slate-900/60 p-2.5 rounded border border-slate-800">
+                <span className="font-semibold text-cyan-400">Hệ Quả Cấp 2 Cần Dự Liệu:</span>
+                <ul className="list-disc list-inside text-slate-300 mt-1 space-y-0.5">
+                  {redflagsResult.secondOrderConsequences.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="bg-slate-900/60 p-2.5 rounded border border-slate-800">
+                <span className="font-semibold text-purple-400">Hệ Quả Cấp 3 Dài Hạn:</span>
+                <ul className="list-disc list-inside text-slate-300 mt-1 space-y-0.5">
+                  {redflagsResult.thirdOrderConsequences.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Commit & Lock Button */}

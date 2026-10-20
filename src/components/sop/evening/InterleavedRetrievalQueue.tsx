@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 import { countWords } from "@/lib/validations";
-import { autoRating, calculateRetrievability, isOptimalFrictionZone } from "@/lib/algorithms/fsrs";
+import { autoRating } from "@/lib/algorithms/fsrs";
 import { InterleavingCardItem } from "@/lib/algorithms/interleaving";
-import { Eye, CheckCircle2, Timer, Zap, AlertCircle, ArrowRight, Activity } from "lucide-react";
+import { RecallEvaluationResult } from "@/lib/ai/socratic-engine";
+import { Eye, CheckCircle2, Timer, Zap, AlertCircle, ArrowRight, Sparkles, Brain, Scissors } from "lucide-react";
 import { Grade } from "ts-fsrs";
 
 interface InterleavedRetrievalQueueProps {
@@ -23,7 +24,8 @@ export function InterleavedRetrievalQueue({
   const [isRevealed, setIsRevealed] = useState(false);
   const [responseTimeSec, setResponseTimeSec] = useState(0);
   const [isTimerActive, setIsTimerActive] = useState(true);
-  const [lastReviewFeedback, setLastReviewFeedback] = useState<any | null>(null);
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [recallEvaluation, setRecallEvaluation] = useState<RecallEvaluationResult | null>(null);
 
   const currentCard = queue[currentIndex] || null;
 
@@ -42,6 +44,8 @@ export function InterleavedRetrievalQueue({
     setIsRevealed(false);
     setResponseTimeSec(0);
     setIsTimerActive(true);
+    setRecallEvaluation(null);
+    setIsEvaluating(false);
   }, [currentIndex]);
 
   if (!currentCard) {
@@ -65,19 +69,40 @@ export function InterleavedRetrievalQueue({
   const wordCount = countWords(commitText);
   const isCommitValid = wordCount >= 30;
 
-  // Gợi ý tự động autoRating chống tự chấm điểm thiên kiến
-  const suggestedGrade = autoRating(responseTimeSec, 90.0, 5.0);
-
-  const handleReveal = () => {
+  const handleReveal = async () => {
     if (!isCommitValid) return;
     setIsRevealed(true);
     setIsTimerActive(false);
+
+    // Call Socratic Deep Structure Recall Evaluation
+    setIsEvaluating(true);
+    try {
+      const res = await fetch("/api/ai/evaluate-recall", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          committedAnswer: commitText,
+          backStructure: currentCard.back_structure || "",
+          responseTimeSec,
+          avgTimeSec: 90,
+          difficulty: currentCard.difficulty || 5.0,
+          isLeech: !!currentCard.is_leech,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRecallEvaluation(data);
+      }
+    } catch (err) {
+      console.error("Recall evaluation error:", err);
+    } finally {
+      setIsEvaluating(false);
+    }
   };
 
   const handleGrade = async (grade: Grade) => {
     try {
-      const feedback = await onCardReviewed(currentCard.id, grade, responseTimeSec);
-      setLastReviewFeedback(feedback);
+      await onCardReviewed(currentCard.id, grade, responseTimeSec);
 
       if (currentIndex + 1 < queue.length) {
         setCurrentIndex((prev) => prev + 1);
@@ -102,6 +127,11 @@ export function InterleavedRetrievalQueue({
             <span className="px-2 py-0.5 bg-cyan-950 text-cyan-400 text-xs font-mono rounded border border-cyan-800">
               Miền: {currentCard.domain_category}
             </span>
+            {currentCard.is_leech && (
+              <span className="px-2 py-0.5 bg-rose-950 text-rose-400 text-xs font-mono rounded border border-rose-800 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" /> Thẻ Đỉa (Leech Quarantine)
+              </span>
+            )}
           </h2>
         </div>
 
@@ -157,90 +187,159 @@ export function InterleavedRetrievalQueue({
 
             <div className="flex justify-between items-center pt-2">
               <div className="text-[11px] text-slate-500 italic">
-                Chống thiên kiến &ldquo;biết rồi khổ lắm nói mãi&rdquo; (Hindsight Bias).
+                Chống thiên kiến "biết rồi khổ lắm nói mãi" (Hindsight Bias).
               </div>
 
               <button
                 onClick={handleReveal}
                 disabled={!isCommitValid}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-semibold transition ${
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-xs font-semibold transition ${
                   isCommitValid
-                    ? "bg-cyan-500 hover:bg-cyan-400 text-slate-950 cursor-pointer"
+                    ? "bg-cyan-500 hover:bg-cyan-400 text-slate-950 cursor-pointer shadow-lg shadow-cyan-500/20"
                     : "bg-slate-800 text-slate-500 cursor-not-allowed"
                 }`}
               >
                 <Eye className="w-4 h-4" />
-                Lật Mặt Sau & Đối Chiếu
+                Lật Thẻ & Đối Chiếu Cấu Trúc Sâu
               </button>
             </div>
           </div>
         ) : (
-          /* Mặt sau sau khi được mở khóa */
-          <div className="flex flex-col gap-5 animate-in fade-in duration-300">
-            {/* User Commit text preview */}
-            <div className="bg-slate-900/30 border border-slate-800/60 rounded-xl p-4 text-xs">
-              <span className="font-mono text-slate-500 block mb-1">Cam kết của bạn trước khi lật:</span>
-              <p className="text-slate-300 italic">&ldquo;{commitText}&rdquo;</p>
-            </div>
-
-            {/* Back Structure */}
-            <div className="bg-slate-900/70 border border-emerald-900/60 rounded-xl p-5 flex flex-col gap-2">
-              <div className="text-[10px] font-mono text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Đáp Án Cơ Chế Chuẩn Xác (Back Structure)</span>
-              </div>
-              <p className="text-sm text-slate-100 leading-relaxed whitespace-pre-wrap">
-                {currentCard.back_structure || "Đáp án chuẩn xác..."}
-              </p>
-            </div>
-
-            {/* Rating Buttons & autoRating suggestion */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 flex flex-col gap-4">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-slate-300 font-medium">Chấm điểm chất lượng truy xuất FSRS:</span>
-                <span className="text-cyan-400 font-mono text-[11px] flex items-center gap-1">
-                  <Activity className="w-3.5 h-3.5" />
-                  Gợi ý tự động ({responseTimeSec}s): Grade {suggestedGrade}
+          /* Mặt sau thẻ sau khi lật */
+          <div className="flex flex-col gap-5 animate-in fade-in duration-200">
+            {/* User committed answer vs back structure */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 flex flex-col gap-2">
+                <span className="text-[10px] font-mono text-cyan-400 uppercase font-semibold">
+                  Câu Trả Lời Cam Kết Của Bạn
                 </span>
+                <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-wrap">{commitText}</p>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-slate-900/60 border border-emerald-900/60 rounded-xl p-4 flex flex-col gap-2">
+                <span className="text-[10px] font-mono text-emerald-400 uppercase font-semibold">
+                  Cấu Trúc Đáp Án Bản Chất (Back Structure)
+                </span>
+                <p className="text-xs text-emerald-100 leading-relaxed whitespace-pre-wrap">
+                  {currentCard.back_structure}
+                </p>
+              </div>
+            </div>
+
+            {/* AI Deep Structure Recall Evaluation Panel */}
+            <div className="bg-slate-900/80 border border-purple-800/60 rounded-xl p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between text-xs font-semibold text-purple-300">
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  Đối Chiếu Cấu Trúc Sâu AI (Deep Structure Recall Evaluator)
+                </span>
+                {isEvaluating && <span className="text-slate-400 font-mono animate-pulse">Đang chấm điểm...</span>}
+              </div>
+
+              {recallEvaluation ? (
+                <div className="flex flex-col gap-2.5 text-xs">
+                  <div className="flex items-center justify-between bg-slate-950 p-2.5 rounded-lg border border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-slate-300">
+                        Điểm Cấu Trúc: <strong className="text-cyan-400">{recallEvaluation.deepStructureScore}/100</strong>
+                      </span>
+                      <span className="text-slate-500">•</span>
+                      <span className="font-mono text-slate-300">
+                        Độ phủ Khái niệm: <strong className="text-emerald-400">{Math.round(recallEvaluation.conceptCoverage * 100)}%</strong>
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-purple-300 font-mono text-[11px] bg-purple-950/80 px-2 py-0.5 rounded border border-purple-800">
+                      <span>Đề xuất FSRS:</span>
+                      <strong>{recallEvaluation.ratingLabel} (Điểm {recallEvaluation.recommendedFsrsRating})</strong>
+                    </div>
+                  </div>
+
+                  <p className="text-slate-300 text-[11px] leading-relaxed">{recallEvaluation.diagnosticFeedback}</p>
+
+                  {recallEvaluation.blindSpots.length > 0 && (
+                    <div className="flex flex-col gap-1 text-[11px] text-amber-300/90 bg-amber-950/30 p-2 rounded border border-amber-900/40">
+                      {recallEvaluation.blindSpots.map((spot, i) => (
+                        <div key={i}>• {spot}</div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Leech Decomposition Suggestion */}
+                  {recallEvaluation.leechDecomposition && (
+                    <div className="bg-rose-950/40 border border-rose-900/60 p-3 rounded-lg flex flex-col gap-2 mt-1">
+                      <div className="flex items-center gap-1.5 font-bold text-rose-300 text-xs">
+                        <Scissors className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Socratic Leech Decomposer: Gợi Ý Bẻ Nhỏ Thẻ Đỉa</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">{recallEvaluation.leechDecomposition.reason}</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
+                        {recallEvaluation.leechDecomposition.atomicCards.map((ac, idx) => (
+                          <div key={idx} className="bg-slate-900/80 p-2 rounded border border-slate-800 text-[11px]">
+                            <div className="text-rose-400 font-semibold">{ac.frontScenario}</div>
+                            <div className="text-slate-400 mt-0.5">{ac.targetConcept}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            {/* FSRS Scoring Bar */}
+            <div className="flex flex-col gap-2 pt-2">
+              <span className="text-xs text-slate-400 text-center font-mono">
+                Chọn mức điểm lưu giữ FSRS-5:
+              </span>
+
+              <div className="grid grid-cols-4 gap-3">
                 <button
                   onClick={() => handleGrade(1)}
-                  className="px-4 py-3 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition"
+                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
+                    recallEvaluation?.recommendedFsrsRating === 1
+                      ? "bg-rose-950 border-rose-500 ring-2 ring-rose-500/50"
+                      : "bg-slate-900/60 border-slate-800 hover:border-rose-700/60 text-rose-300"
+                  }`}
                 >
-                  <span className="text-sm font-bold">Again (1)</span>
-                  <span className="text-[10px] text-rose-400/80 font-normal">Quên / Sai cơ chế</span>
+                  <span className="font-bold text-sm text-rose-400">1: Again</span>
+                  <span className="text-[10px] text-slate-400">Quên hoàn toàn</span>
                 </button>
 
                 <button
                   onClick={() => handleGrade(2)}
-                  className={`px-4 py-3 bg-amber-950/80 hover:bg-amber-900 text-amber-300 border rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition ${
-                    suggestedGrade === 2 ? "border-amber-400 ring-2 ring-amber-400/20" : "border-amber-800"
+                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
+                    recallEvaluation?.recommendedFsrsRating === 2
+                      ? "bg-amber-950 border-amber-500 ring-2 ring-amber-500/50"
+                      : "bg-slate-900/60 border-slate-800 hover:border-amber-700/60 text-amber-300"
                   }`}
                 >
-                  <span className="text-sm font-bold">Hard (2)</span>
-                  <span className="text-[10px] text-amber-400/80 font-normal">Vất vả (&gt; 1.8x thời gian)</span>
+                  <span className="font-bold text-sm text-amber-400">2: Hard</span>
+                  <span className="text-[10px] text-slate-400">Ma sát cao, nhớ chậm</span>
                 </button>
 
                 <button
                   onClick={() => handleGrade(3)}
-                  className={`px-4 py-3 bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition ${
-                    suggestedGrade === 3 ? "border-cyan-400 ring-2 ring-cyan-400/20" : "border-cyan-800"
+                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
+                    recallEvaluation?.recommendedFsrsRating === 3
+                      ? "bg-cyan-950 border-cyan-500 ring-2 ring-cyan-500/50"
+                      : "bg-slate-900/60 border-slate-800 hover:border-cyan-700/60 text-cyan-300"
                   }`}
                 >
-                  <span className="text-sm font-bold">Good (3)</span>
-                  <span className="text-[10px] text-cyan-400/80 font-normal">Nhớ đúng trong chuẩn</span>
+                  <span className="font-bold text-sm text-cyan-400">3: Good</span>
+                  <span className="text-[10px] text-slate-400">Nhớ đúng khung</span>
                 </button>
 
                 <button
                   onClick={() => handleGrade(4)}
-                  className={`px-4 py-3 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border rounded-lg text-xs font-semibold flex flex-col items-center gap-1 transition ${
-                    suggestedGrade === 4 ? "border-emerald-400 ring-2 ring-emerald-400/20" : "border-emerald-800"
+                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
+                    recallEvaluation?.recommendedFsrsRating === 4
+                      ? "bg-emerald-950 border-emerald-500 ring-2 ring-emerald-500/50"
+                      : "bg-slate-900/60 border-slate-800 hover:border-emerald-700/60 text-emerald-300"
                   }`}
                 >
-                  <span className="text-sm font-bold">Easy (4)</span>
-                  <span className="text-[10px] text-emerald-400/80 font-normal">Nhanh & Tự tin</span>
+                  <span className="font-bold text-sm text-emerald-400">4: Easy</span>
+                  <span className="text-[10px] text-slate-400">Trực giác tức thì</span>
                 </button>
               </div>
             </div>

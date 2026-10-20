@@ -2,7 +2,9 @@
 
 import React, { useState } from "react";
 import { countWords } from "@/lib/validations";
-import { BookOpen, Lock, ShieldAlert, CheckCircle2, Bookmark } from "lucide-react";
+import { TipTapEditor } from "@/components/editor/TipTapEditor";
+import { SocraticProbeResult } from "@/lib/ai/socratic-engine";
+import { BookOpen, Lock, ShieldAlert, CheckCircle2, Bookmark, Sparkles, HelpCircle } from "lucide-react";
 
 export interface CitationData {
   author: string;
@@ -37,14 +39,39 @@ export function ClosedBookLiteratureEditor({
     }
   );
 
+  const [socraticResult, setSocraticResult] = useState<SocraticProbeResult | null>(null);
+  const [isProbing, setIsProbing] = useState(false);
+
   const words = countWords(summary);
   const isWordCountValid = words >= 50 && words <= 200;
   const isCitationValid = citation.author.trim() !== "" && citation.title.trim() !== "";
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    e.preventDefault();
-    setPasteBlockedAlert(true);
-    setTimeout(() => setPasteBlockedAlert(false), 4000);
+  const handleTriggerSocraticProbe = async () => {
+    if (!isWordCountValid || isProbing) return;
+    setIsProbing(true);
+    try {
+      const res = await fetch("/api/ai/socratic-probe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phase: "MORNING",
+          input: {
+            hypothesisText: summary,
+            criticalAudit: {
+              primaryConclusion: citation.title,
+            },
+          },
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSocraticResult(data);
+      }
+    } catch (err) {
+      console.error("Socratic probe error:", err);
+    } finally {
+      setIsProbing(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -66,7 +93,7 @@ export function ClosedBookLiteratureEditor({
             Tài liệu nguồn đã đóng hoàn toàn (Closed-Book Recall)
           </h2>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
-            Tóm lược lập luận cốt lõi bằng chính ngôn từ cá nhân. Chặn lệnh dán (Paste) để ép não bộ tổng hợp và tái cấu trúc tri thức.
+            Tóm lược lập luận cốt lõi bằng chính ngôn từ cá nhân qua trình soạn thảo cấu trúc TipTap. Chặn lệnh dán (Paste) để ép não bộ tổng hợp và tái cấu trúc tri thức.
           </p>
         </div>
 
@@ -76,41 +103,70 @@ export function ClosedBookLiteratureEditor({
         </div>
       </div>
 
-      {/* Cảnh báo khi người dùng cố Paste */}
-      {pasteBlockedAlert && (
-        <div className="bg-rose-950/90 border border-rose-800 text-rose-200 px-4 py-3 rounded-lg text-xs flex items-center gap-2 animate-bounce">
-          <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
-          <span>
-            <strong>Lệnh Paste bị chặn (Anti-Verbatim Rule):</strong> Không sao chép nguyên văn! Hãy tự diễn giải bằng vốn từ của bạn để tạo dấu vết thần kinh sâu.
-          </span>
-        </div>
-      )}
-
-      {/* Editor Tóm lược */}
+      {/* Editor Tóm lược TipTap */}
       <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-5 flex flex-col gap-3">
         <div className="flex justify-between items-center">
           <label className="text-xs font-medium text-slate-300">
-            Tóm lược diễn giải tài liệu (Paraphrased Literature Summary)
+            Tóm lược diễn giải tài liệu (TipTap Structured Editor • Paste Disabled)
           </label>
-          <span
-            className={`text-xs font-mono px-2 py-0.5 rounded border ${
-              isWordCountValid
-                ? "bg-emerald-950/80 text-emerald-400 border-emerald-800"
-                : "bg-slate-800 text-amber-400 border-slate-700"
-            }`}
-          >
-            {words} / 50 – 200 từ
-          </span>
         </div>
 
-        <textarea
-          rows={6}
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
-          onPaste={handlePaste}
-          placeholder="Viết tóm lược từ trí nhớ của bạn (tối thiểu 50 từ, tối đa 200 từ)... Lệnh Paste bị vô hiệu hóa hoàn toàn trên ô này."
-          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-4 text-slate-100 text-sm focus:outline-none focus:border-cyan-500 transition resize-none leading-relaxed"
+        <TipTapEditor
+          content={summary}
+          placeholder="Viết tóm lược từ trí nhớ của bạn (tối thiểu 50 từ, tối đa 200 từ)... Lệnh Paste bị vô hiệu hóa hoàn toàn trên ô này theo RULE-01."
+          minWords={50}
+          maxWords={200}
+          blockPaste={true}
+          onChange={(text) => setSummary(text)}
+          onPasteBlocked={() => setPasteBlockedAlert(true)}
         />
+      </div>
+
+      {/* Socratic Mentor–Critic Action & Panel */}
+      <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col gap-3">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2 text-xs font-semibold text-purple-300">
+            <Sparkles className="w-4 h-4 text-purple-400" />
+            <span>Đối Thoại Socratic (Mentor–Critic Loop • Complementary AI)</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleTriggerSocraticProbe}
+            disabled={!isWordCountValid || isProbing}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+              isWordCountValid && !isProbing
+                ? "bg-purple-600 hover:bg-purple-500 text-white cursor-pointer"
+                : "bg-slate-800 text-slate-500 cursor-not-allowed"
+            }`}
+          >
+            {isProbing ? "Mentor đang phân tích..." : "Thử Thách Lập Luận Socratic"}
+          </button>
+        </div>
+
+        {socraticResult && (
+          <div className="bg-slate-950 border border-purple-900/50 rounded-lg p-4 flex flex-col gap-3 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 border-b border-slate-800 pb-2">
+              <span className="text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Critic Guardrail: {socraticResult.criticVerification.criticNotes}
+              </span>
+              <span>5-Category Socratic Taxonomy</span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2.5">
+              {socraticResult.probes.map((probe, i) => (
+                <div key={i} className="bg-slate-900/60 border border-slate-800 rounded p-3 flex flex-col gap-1">
+                  <div className="text-[10px] font-mono font-bold text-cyan-400">
+                    [{probe.category}] {probe.categoryLabel}
+                  </div>
+                  <div className="text-xs text-slate-200 font-medium">{probe.question}</div>
+                  <div className="text-[10px] text-slate-500 italic mt-0.5">
+                    Mục tiêu nhận thức: {probe.cognitiveRationale}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Metadata Trích Dẫn */}
