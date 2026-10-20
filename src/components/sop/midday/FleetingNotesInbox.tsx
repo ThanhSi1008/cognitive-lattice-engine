@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Plus, Trash2, Clock, Zap, CheckCircle2, AlertTriangle } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { Plus, Trash2, Clock, Zap, CheckCircle2, AlertTriangle, Mic, MicOff, Sparkles } from "lucide-react";
 
 export interface FleetingNoteItem {
   id: string;
@@ -30,11 +30,87 @@ export function FleetingNotesInbox({
   const [content, setContent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [isListening, setIsListening] = useState(false);
+  const [isCleaningVoice, setIsCleaningVoice] = useState(false);
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const toggleVoiceRecording = () => {
+    if (typeof window === "undefined") return;
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Trình duyệt hiện tại chưa hỗ trợ Web Speech API. Bạn có thể nhập ghi chú bằng bàn phím.");
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "vi-VN";
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        let transcript = "";
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        setContent(transcript);
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error("Speech start error:", err);
+      setIsListening(false);
+    }
+  };
+
+  const handleCleanVoiceNote = async () => {
+    if (!content.trim() || isCleaningVoice) return;
+    setIsCleaningVoice(true);
+    try {
+      const res = await fetch("/api/ai/transcribe-note", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: content }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setContent(data.cleanedNote);
+      }
+    } catch (err) {
+      console.error("Clean voice note error:", err);
+    } finally {
+      setIsCleaningVoice(false);
+    }
+  };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,23 +197,53 @@ export function FleetingNotesInbox({
         </div>
       )}
 
-      {/* Input Box */}
-      <form onSubmit={handleAdd} className="flex gap-3">
-        <input
-          type="text"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Chụp nhanh một ý tưởng, tia sáng thoáng qua nảy sinh giữa ngày..."
-          className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
-        />
-        <button
-          type="submit"
-          disabled={!content.trim() || isSubmitting}
-          className="px-4 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold rounded-lg text-xs flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          Lưu Nhanh
-        </button>
+      {/* Input Box with Voice Support */}
+      <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2.5">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder={isListening ? "Đang lắng nghe giọng nói của bạn (Web Speech API)..." : "Chụp nhanh một ý tưởng nảy sinh giữa ngày..."}
+            className={`w-full bg-slate-950 border ${isListening ? "border-rose-500 animate-pulse ring-1 ring-rose-500" : "border-slate-800"} rounded-lg px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-cyan-500 pr-10`}
+          />
+          {content.trim() && (
+            <button
+              type="button"
+              onClick={handleCleanVoiceNote}
+              disabled={isCleaningVoice}
+              title="Lọc từ đệm & chuẩn hóa câu chữ bằng AI"
+              className="absolute right-2.5 top-2.5 text-slate-400 hover:text-cyan-400 cursor-pointer"
+            >
+              <Sparkles className={`w-4 h-4 ${isCleaningVoice ? "animate-spin text-cyan-400" : ""}`} />
+            </button>
+          )}
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={toggleVoiceRecording}
+            className={`px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border ${
+              isListening
+                ? "bg-rose-950 text-rose-300 border-rose-700 animate-pulse"
+                : "bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700"
+            }`}
+            title={isListening ? "Dừng ghi âm giọng nói" : "Ghi âm ý tưởng (Web Speech API)"}
+          >
+            {isListening ? <MicOff className="w-4 h-4 text-rose-400" /> : <Mic className="w-4 h-4 text-cyan-400" />}
+            <span>{isListening ? "Đang nghe..." : "Ghi Âm"}</span>
+          </button>
+
+          <button
+            type="submit"
+            disabled={!content.trim() || isSubmitting}
+            className="px-4 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold rounded-lg text-xs flex items-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Lưu Nhanh</span>
+          </button>
+        </div>
       </form>
 
       {/* Notes List */}

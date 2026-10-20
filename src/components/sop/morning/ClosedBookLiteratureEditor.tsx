@@ -3,8 +3,8 @@
 import React, { useState } from "react";
 import { countWords } from "@/lib/validations";
 import { TipTapEditor } from "@/components/editor/TipTapEditor";
-import { SocraticProbeResult } from "@/lib/ai/socratic-engine";
-import { BookOpen, Lock, ShieldAlert, CheckCircle2, Bookmark, Sparkles, HelpCircle } from "lucide-react";
+import { SocraticProbeResult, SocraticEvaluationResult } from "@/lib/ai/socratic-engine";
+import { BookOpen, Lock, ShieldAlert, CheckCircle2, Bookmark, Sparkles, HelpCircle, MessageSquare, Send, AlertTriangle } from "lucide-react";
 
 export interface CitationData {
   author: string;
@@ -41,6 +41,10 @@ export function ClosedBookLiteratureEditor({
 
   const [socraticResult, setSocraticResult] = useState<SocraticProbeResult | null>(null);
   const [isProbing, setIsProbing] = useState(false);
+  const [activeReplyIndex, setActiveReplyIndex] = useState<number | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [evaluatingReply, setEvaluatingReply] = useState(false);
+  const [probeEvaluations, setProbeEvaluations] = useState<Record<number, SocraticEvaluationResult>>({});
 
   const words = countWords(summary);
   const isWordCountValid = words >= 50 && words <= 200;
@@ -71,6 +75,35 @@ export function ClosedBookLiteratureEditor({
       console.error("Socratic probe error:", err);
     } finally {
       setIsProbing(false);
+    }
+  };
+
+  const handleSendReply = async (index: number, probe: any) => {
+    if (!replyText.trim() || evaluatingReply) return;
+    setEvaluatingReply(true);
+    try {
+      const res = await fetch("/api/ai/socratic-probe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phase: "EVALUATE_REPLY",
+          input: {
+            probeQuestion: probe.question,
+            probeCategory: probe.category,
+            userReply: replyText.trim(),
+            contextText: summary,
+          },
+        }),
+      });
+      if (res.ok) {
+        const data: SocraticEvaluationResult = await res.json();
+        setProbeEvaluations((prev) => ({ ...prev, [index]: data }));
+        setReplyText("");
+      }
+    } catch (err) {
+      console.error("Reply evaluation error:", err);
+    } finally {
+      setEvaluatingReply(false);
     }
   };
 
@@ -152,18 +185,97 @@ export function ClosedBookLiteratureEditor({
               <span>5-Category Socratic Taxonomy</span>
             </div>
 
-            <div className="grid grid-cols-1 gap-2.5">
-              {socraticResult.probes.map((probe, i) => (
-                <div key={i} className="bg-slate-900/60 border border-slate-800 rounded p-3 flex flex-col gap-1">
-                  <div className="text-[10px] font-mono font-bold text-cyan-400">
-                    [{probe.category}] {probe.categoryLabel}
+            <div className="grid grid-cols-1 gap-3">
+              {socraticResult.probes.map((probe, i) => {
+                const evalData = probeEvaluations[i];
+                const isReplying = activeReplyIndex === i;
+
+                return (
+                  <div key={i} className="bg-slate-900/60 border border-slate-800 rounded-lg p-3.5 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-mono font-bold text-cyan-400">
+                        [{probe.category}] {probe.categoryLabel}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveReplyIndex(isReplying ? null : i)}
+                        className="text-[11px] font-mono text-purple-400 hover:text-purple-300 flex items-center gap-1 cursor-pointer bg-purple-950/60 px-2 py-0.5 rounded border border-purple-800"
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                        {isReplying ? "Đóng phản hồi" : "Trả lời Socrates"}
+                      </button>
+                    </div>
+
+                    <div className="text-xs text-slate-200 font-medium">{probe.question}</div>
+                    <div className="text-[10px] text-slate-500 italic">
+                      Mục tiêu nhận thức: {probe.cognitiveRationale}
+                    </div>
+
+                    {/* Interactive Multi-turn Reply Box */}
+                    {isReplying && (
+                      <div className="mt-2 pt-2 border-t border-slate-800 flex flex-col gap-2 animate-in fade-in duration-150">
+                        <textarea
+                          rows={2}
+                          value={replyText}
+                          onChange={(e) => setReplyText(e.target.value)}
+                          placeholder="Nhập luận điểm phản biện hoặc phân tích nguyên lý gốc của bạn (tối thiểu 5-10 từ)..."
+                          className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
+                        />
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handleSendReply(i, probe)}
+                            disabled={!replyText.trim() || evaluatingReply}
+                            className="bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1 rounded font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                          >
+                            <Send className="w-3 h-3" />
+                            {evaluatingReply ? "Plato đang thẩm định..." : "Gửi Phản Hồi Cho Socrates"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Socrates & Plato Multi-Agent Evaluation Output */}
+                    {evalData && (
+                      <div className="mt-2 p-3 bg-purple-950/40 border border-purple-800/80 rounded-lg flex flex-col gap-1.5 text-xs">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-purple-300 flex items-center gap-1">
+                            <Sparkles className="w-3.5 h-3.5 text-purple-400" /> Thẩm định Socratic (Analyst–Proofreader):
+                          </span>
+                          <span
+                            className={`font-mono text-[10px] px-2 py-0.5 rounded border ${
+                              evalData.reachedFirstPrinciples
+                                ? "bg-emerald-950 text-emerald-400 border-emerald-800"
+                                : "bg-amber-950 text-amber-400 border-amber-800"
+                            }`}
+                          >
+                            {evalData.reachedFirstPrinciples ? "Đạt Nguyên Lý Gốc" : "Chưa Đạt Nguyên Lý Gốc"} (
+                            {Math.round(evalData.firstPrinciplesScore * 100)}%)
+                          </span>
+                        </div>
+
+                        <p className="text-slate-300 italic">{evalData.socraticCritique}</p>
+
+                        {evalData.identifiedBlindSpots.length > 0 && (
+                          <div className="text-[11px] text-amber-300 flex items-start gap-1">
+                            <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0 mt-0.5" />
+                            <span>Điểm mù: {evalData.identifiedBlindSpots.join("; ")}</span>
+                          </div>
+                        )}
+
+                        <div className="bg-slate-950/80 p-2 rounded border border-purple-900/50 mt-1">
+                          <span className="text-[10px] font-mono text-cyan-400 block mb-0.5 font-bold">
+                            Câu hỏi xoáy sâu tiếp theo của Socrates:
+                          </span>
+                          <span className="text-xs text-slate-100 font-medium">
+                            {evalData.nextProbingQuestion}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-slate-200 font-medium">{probe.question}</div>
-                  <div className="text-[10px] text-slate-500 italic mt-0.5">
-                    Mục tiêu nhận thức: {probe.cognitiveRationale}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

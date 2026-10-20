@@ -18,7 +18,11 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
-export function SessionCoordinator() {
+interface SessionCoordinatorProps {
+  onDataMutated?: () => void;
+}
+
+export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = {}) {
   const userId = "00000000-0000-0000-0000-000000000001";
   const [activeTab, setActiveTab] = useState<"MORNING" | "MIDDAY" | "AFTERNOON" | "EVENING" | "REFACTORING">("MORNING");
   const [session, setSession] = useState<any | null>(null);
@@ -86,6 +90,7 @@ export function SessionCoordinator() {
       }),
     });
     await loadSession();
+    onDataMutated?.();
     setActiveTab("MIDDAY");
   };
 
@@ -99,6 +104,7 @@ export function SessionCoordinator() {
       }),
     });
     await loadSession();
+    onDataMutated?.();
     setActiveTab("EVENING");
   };
 
@@ -256,6 +262,7 @@ export function SessionCoordinator() {
           onCompleteEveningSession={() => {
             // Hoàn tất chu kỳ ngày
             loadSession();
+            onDataMutated?.();
           }}
         />
       )}
@@ -362,6 +369,7 @@ export function SessionCoordinator() {
                           });
                           if (res.ok) {
                             await loadSession();
+                            onDataMutated?.();
                           }
                         } catch (e) {
                           console.error("Lỗi phẫu thuật thẻ đỉa:", e);

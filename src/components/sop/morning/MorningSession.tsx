@@ -6,7 +6,25 @@ import { ConcurrentReader } from "./ConcurrentReader";
 import { ClosedBookLiteratureEditor, CitationData } from "./ClosedBookLiteratureEditor";
 import { CriticalAuditData } from "./CriticalAuditWidget";
 import { AnalogicalDomainItem } from "./AnalogicalMatrixWidget";
-import { AlertOctagon, CheckCircle2, BookOpen, Upload, FileText, Sparkles, ArrowRight } from "lucide-react";
+import {
+  AlertOctagon,
+  CheckCircle2,
+  BookOpen,
+  Upload,
+  FileText,
+  Sparkles,
+  ArrowRight,
+  Search,
+  Copy,
+  Check,
+  Globe,
+  ExternalLink,
+} from "lucide-react";
+import {
+  buildAcademicSearchQueries,
+  fetchDoiMetadata,
+  AcademicSearchQueries,
+} from "@/lib/algorithms/academicSearch";
 
 interface MorningSessionProps {
   userId?: string;
@@ -25,12 +43,55 @@ export function MorningSession({
   const [step, setStep] = useState<"INGEST_1_0" | "GATE_1_1" | "READER_1_2" | "CLOSED_BOOK_1_3" | "COMPLETED">("INGEST_1_0");
 
   // State tài liệu nguồn
-  const [ingestMode, setIngestMode] = useState<"PRESET" | "CUSTOM">("PRESET");
+  const [ingestMode, setIngestMode] = useState<"PRESET" | "CUSTOM" | "SEARCH_BUILDER">("PRESET");
   const [selectedPresetId, setSelectedPresetId] = useState("HOWARD_MARKS_SECOND_ORDER");
   const [customTitle, setCustomTitle] = useState("");
   const [customAuthor, setCustomAuthor] = useState("");
+  const [customYear, setCustomYear] = useState<number | string>(new Date().getFullYear());
   const [customText, setCustomText] = useState("");
+  const [customDoi, setCustomDoi] = useState("");
   const [isIngesting, setIsIngesting] = useState(false);
+  const [isResolvingDoi, setIsResolvingDoi] = useState(false);
+
+  // State Trình tạo truy vấn học thuật PICO
+  const [picoTopic, setPicoTopic] = useState("");
+  const [picoIntervention, setPicoIntervention] = useState("");
+  const [picoComparison, setPicoComparison] = useState("");
+  const [picoOutcome, setPicoOutcome] = useState("");
+  const [generatedQueries, setGeneratedQueries] = useState<AcademicSearchQueries | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const handleCopyQuery = (key: string, queryStr: string) => {
+    navigator.clipboard.writeText(queryStr);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const handleBuildQueries = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = buildAcademicSearchQueries({
+      population: picoTopic,
+      intervention: picoIntervention,
+      comparison: picoComparison,
+      outcome: picoOutcome,
+    });
+    setGeneratedQueries(q);
+  };
+
+  const handleLookupDoi = async () => {
+    if (!customDoi.trim() || isResolvingDoi) return;
+    setIsResolvingDoi(true);
+    try {
+      const meta = await fetchDoiMetadata(customDoi.trim());
+      setCustomTitle(meta.title);
+      setCustomAuthor(meta.author);
+      setCustomYear(meta.year);
+    } catch (err: any) {
+      alert("Lỗi tra cứu DOI: " + err.message);
+    } finally {
+      setIsResolvingDoi(false);
+    }
+  };
 
   const [activeConcept, setActiveConcept] = useState<{
     title: string;
@@ -162,7 +223,7 @@ export function MorningSession({
                 ingestMode === "PRESET" ? "bg-cyan-500 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
               }`}
             >
-              Thư Viện Mô Hình Mẫu
+              Thư Viện Mẫu
             </button>
             <button
               type="button"
@@ -171,12 +232,21 @@ export function MorningSession({
                 ingestMode === "CUSTOM" ? "bg-cyan-500 text-slate-950 font-bold" : "text-slate-400 hover:text-white"
               }`}
             >
-              Tự Nạp / Tải Tệp .md, .txt
+              Tự Nạp / DOI
+            </button>
+            <button
+              type="button"
+              onClick={() => setIngestMode("SEARCH_BUILDER")}
+              className={`px-3 py-1.5 rounded transition ${
+                ingestMode === "SEARCH_BUILDER" ? "bg-purple-600 text-white font-bold" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              PRISMA / PICO Search
             </button>
           </div>
         </div>
 
-        {ingestMode === "PRESET" ? (
+        {ingestMode === "PRESET" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div
               onClick={() => {
@@ -246,9 +316,36 @@ export function MorningSession({
               <div className="text-[11px] text-slate-500 mt-auto font-mono">Author: Robert A. Bjork (2011)</div>
             </div>
           </div>
-        ) : (
+        )}
+
+        {ingestMode === "CUSTOM" && (
           /* Chế độ nhập văn bản hoặc tải tệp */
           <div className="flex flex-col gap-4">
+            {/* Tra cứu nhanh theo mã DOI */}
+            <div className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl flex flex-col sm:flex-row gap-2.5 items-center">
+              <div className="flex-1 w-full">
+                <div className="text-[10px] font-mono text-cyan-400 uppercase tracking-wider mb-1">
+                  Tra Cứu Tự Động Theo Mã DOI (Crossref Registry)
+                </div>
+                <input
+                  type="text"
+                  value={customDoi}
+                  onChange={(e) => setCustomDoi(e.target.value)}
+                  placeholder="Nhập DOI (ví dụ: 10.1037/0033-295X.109.1.3 hoặc https://doi.org/...)"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleLookupDoi}
+                disabled={!customDoi.trim() || isResolvingDoi}
+                className="w-full sm:w-auto px-4 py-2 mt-auto bg-cyan-950 hover:bg-cyan-900 border border-cyan-800 text-cyan-300 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              >
+                <Search className="w-3.5 h-3.5" />
+                {isResolvingDoi ? "Đang tra cứu..." : "Điền Tự Động"}
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="text-slate-400 font-medium">Tiêu đề bài viết / tài liệu *</label>
@@ -303,6 +400,154 @@ export function MorningSession({
               <Sparkles className="w-4 h-4" />
               {isIngesting ? "Đang phân đoạn văn bản..." : "Bóc Tách Khối Luận Điểm & Mở Cổng Đoán Trước (180s)"}
             </button>
+          </div>
+        )}
+
+        {ingestMode === "SEARCH_BUILDER" && (
+          /* Trợ Lý Truy Vấn Tổng Quan Hệ Thống PRISMA / PICO */
+          <div className="flex flex-col gap-4">
+            <div className="bg-purple-950/30 border border-purple-800/60 p-4 rounded-xl flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-purple-300 font-semibold text-xs">
+                <Globe className="w-4 h-4 text-purple-400" />
+                <span>Trợ Lý Truy Vấn Tổng Quan Hệ Thống (PRISMA / PICO Query Builder)</span>
+              </div>
+              <p className="text-xs text-slate-300">
+                Tự động tạo chuỗi truy vấn chuẩn hóa cho 4 hệ thống cơ sở dữ liệu học thuật quốc tế: PubMed (MeSH), Scopus (TITLE-ABS-KEY), Web of Science (TS=), và PROSPERO / Cochrane Registry.
+              </p>
+            </div>
+
+            <form onSubmit={handleBuildQueries} className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="text-slate-400 font-medium">Đối tượng nghiên cứu (Population / Domain) *</label>
+                <input
+                  type="text"
+                  required
+                  value={picoTopic}
+                  onChange={(e) => setPicoTopic(e.target.value)}
+                  placeholder="Ví dụ: Spaced Repetition in Higher Education"
+                  className="w-full mt-1 bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-400 font-medium">Can thiệp / Cơ chế (Intervention)</label>
+                <input
+                  type="text"
+                  value={picoIntervention}
+                  onChange={(e) => setPicoIntervention(e.target.value)}
+                  placeholder="Ví dụ: Desirable Difficulties OR Interleaving"
+                  className="w-full mt-1 bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-400 font-medium">Đối chứng (Comparison)</label>
+                <input
+                  type="text"
+                  value={picoComparison}
+                  onChange={(e) => setPicoComparison(e.target.value)}
+                  placeholder="Ví dụ: Massed Practice OR Blocked Study"
+                  className="w-full mt-1 bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-400 font-medium">Kết cục mong đợi (Outcome)</label>
+                <input
+                  type="text"
+                  value={picoOutcome}
+                  onChange={(e) => setPicoOutcome(e.target.value)}
+                  placeholder="Ví dụ: Long-Term Retention OR Far Transfer"
+                  className="w-full mt-1 bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              <div className="md:col-span-2 flex justify-end">
+                <button
+                  type="submit"
+                  className="bg-purple-600 hover:bg-purple-500 text-white text-xs px-5 py-2.5 rounded-lg font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Search className="w-3.5 h-3.5" />
+                  <span>Sinh Cú Pháp Truy Vấn Cho 4 Cơ Sở Dữ Liệu</span>
+                </button>
+              </div>
+            </form>
+
+            {generatedQueries && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                {/* PubMed */}
+                <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between gap-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-cyan-400 font-mono">
+                    <span>1. PubMed (MeSH + Title/Abstract)</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyQuery("pubmed", generatedQueries.pubMed)}
+                      className="text-slate-400 hover:text-white flex items-center gap-1 text-[11px] cursor-pointer"
+                    >
+                      {copiedKey === "pubmed" ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedKey === "pubmed" ? "Đã chép" : "Sao chép"}</span>
+                    </button>
+                  </div>
+                  <pre className="text-[11px] font-mono text-slate-300 bg-slate-950 p-2.5 rounded border border-slate-800 overflow-x-auto whitespace-pre-wrap">
+                    {generatedQueries.pubMed}
+                  </pre>
+                </div>
+
+                {/* Scopus */}
+                <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between gap-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-amber-400 font-mono">
+                    <span>2. Scopus (TITLE-ABS-KEY)</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyQuery("scopus", generatedQueries.scopus)}
+                      className="text-slate-400 hover:text-white flex items-center gap-1 text-[11px] cursor-pointer"
+                    >
+                      {copiedKey === "scopus" ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedKey === "scopus" ? "Đã chép" : "Sao chép"}</span>
+                    </button>
+                  </div>
+                  <pre className="text-[11px] font-mono text-slate-300 bg-slate-950 p-2.5 rounded border border-slate-800 overflow-x-auto whitespace-pre-wrap">
+                    {generatedQueries.scopus}
+                  </pre>
+                </div>
+
+                {/* Web of Science */}
+                <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between gap-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-indigo-400 font-mono">
+                    <span>3. Web of Science (TS= Topic Search)</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyQuery("wos", generatedQueries.webOfScience)}
+                      className="text-slate-400 hover:text-white flex items-center gap-1 text-[11px] cursor-pointer"
+                    >
+                      {copiedKey === "wos" ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedKey === "wos" ? "Đã chép" : "Sao chép"}</span>
+                    </button>
+                  </div>
+                  <pre className="text-[11px] font-mono text-slate-300 bg-slate-950 p-2.5 rounded border border-slate-800 overflow-x-auto whitespace-pre-wrap">
+                    {generatedQueries.webOfScience}
+                  </pre>
+                </div>
+
+                {/* PROSPERO / Cochrane */}
+                <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3.5 flex flex-col justify-between gap-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-emerald-400 font-mono">
+                    <span>4. PROSPERO & Cochrane Registry</span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyQuery("prospero", generatedQueries.prosperoCochrane)}
+                      className="text-slate-400 hover:text-white flex items-center gap-1 text-[11px] cursor-pointer"
+                    >
+                      {copiedKey === "prospero" ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedKey === "prospero" ? "Đã chép" : "Sao chép"}</span>
+                    </button>
+                  </div>
+                  <pre className="text-[11px] font-mono text-slate-300 bg-slate-950 p-2.5 rounded border border-slate-800 overflow-x-auto whitespace-pre-wrap">
+                    {generatedQueries.prosperoCochrane}
+                  </pre>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

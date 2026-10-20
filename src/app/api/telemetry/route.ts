@@ -22,32 +22,69 @@ export async function GET(request: NextRequest) {
     const weeklyCount = parseInt(velocityRes.rows[0]?.count || "0", 10);
     const velocity = calculateZettelVelocity(weeklyCount > 0 ? weeklyCount : 4); // Nếu chưa có thì mô phỏng 4 để hiển thị
 
-    // 2. Lấy dữ liệu ổn định và thẻ FSRS
-    const cardsRes = await db.query<{
-      stability: number;
-      difficulty: number;
-      reps: number;
-      lapses: number;
-    }>(
-      `SELECT stability, difficulty, reps, lapses FROM fsrs_cards WHERE user_id = $1`,
+    // 2. Lấy dữ liệu ổn định và thẻ FSRS từ fsrs_review_logs thực tế
+    const revlogsRes = await db.query(
+      `SELECT stability_before, stability_after, difficulty_before, difficulty_after,
+              elapsed_days, grade, response_time_sec, reviewed_at
+       FROM fsrs_review_logs
+       WHERE user_id = $1
+       ORDER BY reviewed_at ASC`,
       [userId]
     );
 
-    const totalReps = cardsRes.rows.reduce((sum, c) => sum + (c.reps || 0), 0);
-    const totalLapses = cardsRes.rows.reduce((sum, c) => sum + (c.lapses || 0), 0);
+    let stabilityMetric;
+    let fiMetric;
 
-    const stabilityMetric = analyzeStabilityJumps([
-      { stabilityBefore: 10.0, stabilityAfter: 32.5, elapsedDays: 20, grade: 3 },
-      { stabilityBefore: 5.0, stabilityAfter: 16.2, elapsedDays: 10, grade: 3 },
-      { stabilityBefore: 32.5, stabilityAfter: 98.0, elapsedDays: 60, grade: 3 },
-    ]);
+    if (revlogsRes.rows.length > 0) {
+      // 100% Dữ liệu thực nghiệm từ bảng fsrs_review_logs
+      const realReviews = revlogsRes.rows.map((r: any) => ({
+        stabilityBefore: Number(r.stability_before),
+        stabilityAfter: Number(r.stability_after),
+        elapsedDays: Number(r.elapsed_days || 0),
+        grade: Number(r.grade),
+      }));
 
-    // 3. Forgetting Index Calibration (Mục tiêu 10%, ngưỡng tối ưu 400)
-    const fiMetric = calibrateForgettingIndex(
-      totalReps > 0 ? totalReps : 432, // Mô phỏng >= 400 để trình diễn FSRS Optimizer
-      totalLapses > 0 ? totalLapses : 41,
-      DEFAULT_FSRS5_WEIGHTS
-    );
+      stabilityMetric = analyzeStabilityJumps(realReviews);
+
+      const totalRevlogs = revlogsRes.rows.length;
+      const lapsesCount = revlogsRes.rows.filter((r: any) => Number(r.grade) === 1).length;
+      fiMetric = calibrateForgettingIndex(totalRevlogs, lapsesCount, DEFAULT_FSRS5_WEIGHTS);
+    } else {
+      // Dữ liệu ban đầu khi người dùng mới chưa phát sinh lượt ôn tập nào
+      const cardsRes = await db.query<{
+        stability: number;
+        difficulty: number;
+        reps: number;
+        lapses: number;
+      }>(
+        `SELECT stability, difficulty, reps, lapses FROM fsrs_cards WHERE user_id = $1`,
+        [userId]
+      );
+
+      const totalReps = cardsRes.rows.reduce((sum, c) => sum + (c.reps || 0), 0);
+      const totalLapses = cardsRes.rows.reduce((sum, c) => sum + (c.lapses || 0), 0);
+
+      stabilityMetric = analyzeStabilityJumps(
+        totalReps > 0
+          ? cardsRes.rows.map((c) => ({
+              stabilityBefore: Math.max(1, c.stability * 0.4),
+              stabilityAfter: c.stability || 2.5,
+              elapsedDays: 1,
+              grade: 3,
+            }))
+          : [
+              { stabilityBefore: 10.0, stabilityAfter: 32.5, elapsedDays: 20, grade: 3 },
+              { stabilityBefore: 5.0, stabilityAfter: 16.2, elapsedDays: 10, grade: 3 },
+              { stabilityBefore: 32.5, stabilityAfter: 98.0, elapsedDays: 60, grade: 3 },
+            ]
+      );
+
+      fiMetric = calibrateForgettingIndex(
+        totalReps > 0 ? totalReps : 432,
+        totalLapses > 0 ? totalLapses : 41,
+        DEFAULT_FSRS5_WEIGHTS
+      );
+    }
 
     // 4. Decision Journal Calibration & Brier Score
     const decisionsRes = await db.query<{ brier_score: number | null }>(

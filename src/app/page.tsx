@@ -1,8 +1,17 @@
+"use client";
+
+import React, { useState, useCallback } from "react";
 import { SessionCoordinator } from "@/components/sop/SessionCoordinator";
 import { CognitiveTelemetryDashboard } from "@/components/dashboard/CognitiveTelemetryDashboard";
 import { ZettelkastenNetworkGraph } from "@/components/graph/ZettelkastenNetworkGraph";
 
 export default function Home() {
+  const [dataVersion, setDataVersion] = useState(0);
+
+  const handleDataMutated = useCallback(() => {
+    setDataVersion((v) => v + 1);
+  }, []);
+
   return (
     <main className="min-h-screen p-6 md:p-8 max-w-7xl mx-auto flex flex-col gap-10">
       <header className="border-b border-slate-800 pb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -27,17 +36,17 @@ export default function Home() {
 
       {/* Máy Điều Phối SOP 60 Phút (4 Phân Hệ) */}
       <section className="flex flex-col gap-3">
-        <SessionCoordinator />
+        <SessionCoordinator onDataMutated={handleDataMutated} />
       </section>
 
       {/* Đồ Thị Mạng Lưới Tư Duy WebGL Cytoscape.js */}
       <section className="flex flex-col gap-3">
-        <ZettelkastenNetworkGraph />
+        <ZettelkastenNetworkGraph refreshTrigger={dataVersion} />
       </section>
 
       {/* Bảng Điều Khiển Điện Tâm Đồ Nhận Thức (4 Thước Đo Cốt Lõi) */}
       <section className="flex flex-col gap-3">
-        <CognitiveTelemetryDashboard />
+        <CognitiveTelemetryDashboard refreshTrigger={dataVersion} />
       </section>
     </main>
   );

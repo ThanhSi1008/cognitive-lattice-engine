@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Cognitive Lattice Engine (CLE)",
   description: "Advanced Epistemic & Cognitive Lattice Engine with FSRS-5 and Zettelkasten",
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({

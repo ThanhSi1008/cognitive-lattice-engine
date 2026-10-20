@@ -24,6 +24,7 @@ interface EdgeData {
 interface ZettelkastenNetworkGraphProps {
   initialNodes?: Array<{ data: NodeData }>;
   initialEdges?: Array<{ data: EdgeData }>;
+  refreshTrigger?: number;
 }
 
 const DOMAIN_COLORS: Record<string, string> = {
@@ -38,6 +39,7 @@ const DOMAIN_COLORS: Record<string, string> = {
 export function ZettelkastenNetworkGraph({
   initialNodes,
   initialEdges,
+  refreshTrigger,
 }: ZettelkastenNetworkGraphProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<Core | null>(null);
@@ -161,7 +163,7 @@ export function ZettelkastenNetworkGraph({
         cyRef.current = null;
       }
     };
-  }, [initialNodes, initialEdges]);
+  }, [initialNodes, initialEdges, refreshTrigger]);
 
   // Bộ lọc tìm kiếm
   useEffect(() => {

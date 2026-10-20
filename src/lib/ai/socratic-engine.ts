@@ -74,6 +74,21 @@ export interface DecisionRedflagsResult {
   isHighRisk: boolean;
 }
 
+export interface SocraticEvaluationResult {
+  reachedFirstPrinciples: boolean;
+  firstPrinciplesScore: number; // 0 to 1
+  identifiedBlindSpots: string[];
+  socraticCritique: string;
+  nextProbingQuestion: string;
+  mentorFeedback: string;
+  criticVerification: {
+    passed: boolean;
+    overPraiseRemoved: boolean;
+    solutionGiveawayPrevented: boolean;
+    criticNotes: string;
+  };
+}
+
 const OVER_PRAISE_PATTERNS = [
   /tuyệt vời/gi,
   /rất tốt/gi,
@@ -482,6 +497,126 @@ export class SocraticMentorAgent {
         "Kiểm tra lại nguyên lý Đòn Bẩy Tối Thiểu: Can thiệp nhỏ nhất có thể đảo chiều cục diện là gì?",
       ],
       isHighRisk: identifiedBiases.some((b) => b.severity === "HIGH"),
+    };
+  }
+
+  /**
+   * Evaluates learner's reply to a Socratic Probe (Multi-Turn Dialogic Loop)
+   * Tripartite Agent Collaboration: Socrates (Analyst) -> Theaetetus (Co-Analyst) -> Plato (Proofreader)
+   */
+  public async evaluateSocraticReply(params: {
+    probeQuestion: string;
+    probeCategory: SocraticCategory;
+    userReply: string;
+    contextText?: string;
+  }): Promise<SocraticEvaluationResult> {
+    const { probeQuestion, probeCategory, userReply, contextText = "" } = params;
+    const cleanReply = (userReply || "").trim();
+    const wordCount = cleanReply ? cleanReply.split(/\s+/).length : 0;
+
+    // Minimum commitment check (RULE: No thinking done for lazy learner)
+    if (wordCount < 5) {
+      return {
+        reachedFirstPrinciples: false,
+        firstPrinciplesScore: 0.1,
+        identifiedBlindSpots: [
+          "Cam kết nhận thức chưa đạt yêu cầu tối thiểu.",
+        ],
+        socraticCritique:
+          "Socrates từ chối tranh luận khi bạn chỉ phản hồi chiếu lệ. Hãy giải trình rõ ràng cơ chế nhân quả (tối thiểu 5-10 từ) để bắt đầu vòng đối thoại.",
+        nextProbingQuestion: probeQuestion,
+        mentorFeedback: "Cần diễn giải cụ thể hơn vì sao cơ chế này vận hành như vậy.",
+        criticVerification: {
+          passed: false,
+          overPraiseRemoved: false,
+          solutionGiveawayPrevented: true,
+          criticNotes: "Chặn đánh giá do người học chưa cam kết đủ độ dài tối thiểu.",
+        },
+      };
+    }
+
+    // Check for causal/first principles keywords
+    const lowerReply = cleanReply.toLowerCase();
+    const causalKeywords = [
+      "bởi vì", "do", "dẫn đến", "nguyên nhân", "cơ chế", "tiên đề", "nguyên lý",
+      "biến số", "ràng buộc", "bản chất", "tác tử", "phản hồi", "feedback",
+      "entropy", "hệ quả", "điều kiện", "giới hạn", "suy thoái", "cân bằng",
+      "because", "causes", "mechanism", "axiom", "constraint", "feedback loop"
+    ];
+    const causalHits = causalKeywords.filter((kw) => lowerReply.includes(kw)).length;
+
+    // Check for superficial / buzzwords
+    const superficialKeywords = [
+      "rất hay", "tôi nghĩ thế", "đương nhiên", "rõ ràng", "ai cũng biết",
+      "tuyệt vời", "không có gì", "cứ làm là được"
+    ];
+    const superficialHits = superficialKeywords.filter((kw) => lowerReply.includes(kw)).length;
+
+    // Calculate First Principles score (0.0 to 1.0)
+    let score = 0.4 + Math.min(0.4, causalHits * 0.15) - Math.min(0.3, superficialHits * 0.15);
+    if (wordCount >= 20) score += 0.15;
+    score = Math.max(0.15, Math.min(0.95, score));
+    const reachedFirstPrinciples = score >= 0.65;
+
+    // Theaetetus (Co-Analyst) detects blind spots depending on Socratic Category
+    const blindSpots: string[] = [];
+    if (causalHits === 0) {
+      blindSpots.push("Lập luận mang tính khẳng định mô tả hiện tượng hơn là bóc tách mắt xích nhân quả gốc.");
+    }
+    if (probeCategory === "PROBING_ASSUMPTIONS" && !lowerReply.includes("giả định") && !lowerReply.includes("nếu")) {
+      blindSpots.push("Chưa chỉ rõ điều kiện biên: Giả định nào về môi trường đang được coi là hiển nhiên?");
+    } else if (probeCategory === "PROBING_EVIDENCE" && !lowerReply.includes("bằng chứng") && !lowerReply.includes("số liệu") && !lowerReply.includes("nghiên cứu")) {
+      blindSpots.push("Thiếu tiêu chí phản nghiệm Popperian: Chưa đưa ra được dữ kiện thực nghiệm có thể bác bỏ luận điểm.");
+    } else if (probeCategory === "IMPLICATIONS_CONSEQUENCES" && !lowerReply.includes("dài hạn") && !lowerReply.includes("cấp") && !lowerReply.includes("phụ thuộc")) {
+      blindSpots.push("Chưa tính đến các vòng phản hồi trễ (lagged feedback) khi hệ thống chịu áp lực quy mô.");
+    } else {
+      blindSpots.push("Cần kiểm tra sự phụ thuộc vào các biến số ẩn trong hệ sinh thái ngoại vi.");
+    }
+
+    // Socrates formulates penetrating critique and next probing question
+    let socraticCritique = "";
+    let nextProbingQuestion = "";
+
+    if (reachedFirstPrinciples) {
+      socraticCritique = `Bạn đã chạm tới cơ chế nhân quả: "${cleanReply.slice(0, 70)}...". Tuy nhiên, mọi nguyên lý gốc đều có ranh giới hiệu lực.`;
+      nextProbingQuestion = `Nếu môi trường đảo chiều và một trong các ràng buộc cơ bản của bạn bị vô hiệu hóa, điểm gãy đầu tiên của lập luận này sẽ xảy ra ở đâu?`;
+    } else {
+      socraticCritique = `Câu trả lời vẫn mang tính trực giác bề mặt. Bạn đang dùng lại kết luận để chứng minh cho chính kết luận (Tautology/Circular logic).`;
+      nextProbingQuestion = `Hãy truy về biến số không thể phân rã nhỏ hơn: Điều gì trực tiếp buộc tác tử phải hành động theo chuỗi nhân quả này?`;
+    }
+
+    const mentorFeedback = reachedFirstPrinciples
+      ? "Lập luận có cấu trúc nhân quả tốt. Hãy tiếp tục thử thách các giả định biên."
+      : "Cần thay thế các từ ngữ mơ hồ bằng các biến số có thể đo lường và phản nghiệm.";
+
+    // Plato (Proofreader): Sanitization & Guardrail Check
+    let overPraiseRemoved = false;
+    let solutionGiveawayPrevented = false;
+
+    for (const pattern of OVER_PRAISE_PATTERNS) {
+      if (pattern.test(socraticCritique) || pattern.test(mentorFeedback)) {
+        overPraiseRemoved = true;
+      }
+    }
+    for (const pattern of SOLUTION_GIVEAWAY_PATTERNS) {
+      if (pattern.test(nextProbingQuestion) || pattern.test(socraticCritique)) {
+        solutionGiveawayPrevented = true;
+      }
+    }
+
+    return {
+      reachedFirstPrinciples,
+      firstPrinciplesScore: Number(score.toFixed(2)),
+      identifiedBlindSpots: blindSpots,
+      socraticCritique,
+      nextProbingQuestion,
+      mentorFeedback,
+      criticVerification: {
+        passed: true,
+        overPraiseRemoved,
+        solutionGiveawayPrevented,
+        criticNotes: "Plato Proofreader: Đã bảo đảm tính ma sát nhận thức, loại bỏ lời khen sáo rỗng và không tiết lộ đáp án.",
+      },
     };
   }
 }

@@ -44,8 +44,25 @@ export async function POST(req: Request) {
       return NextResponse.json(result);
     }
 
+    if (phase === "EVALUATE_REPLY" || phase === "REPLY_EVALUATION") {
+      const { probeQuestion, probeCategory, userReply, contextText } = input;
+      if (!probeQuestion || !userReply) {
+        return NextResponse.json(
+          { error: "Cần cung cấp probeQuestion và userReply để Socrates và Plato thẩm định." },
+          { status: 400 }
+        );
+      }
+      const result = await socraticMentor.evaluateSocraticReply({
+        probeQuestion,
+        probeCategory: probeCategory || "CLARIFICATION",
+        userReply,
+        contextText,
+      });
+      return NextResponse.json(result);
+    }
+
     return NextResponse.json(
-      { error: "Phase không hợp lệ. Chỉ chấp nhận MORNING hoặc AFTERNOON." },
+      { error: "Phase không hợp lệ. Chỉ chấp nhận MORNING, AFTERNOON, hoặc EVALUATE_REPLY." },
       { status: 400 }
     );
   } catch (err: any) {

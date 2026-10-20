@@ -2,8 +2,33 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { FsrsCardSchema } from "@/lib/validations";
 import { scheduleFSRSCardReview } from "@/lib/algorithms/fsrs";
-import { orderQueueByMaxContrast, InterleavingCardItem } from "@/lib/algorithms/interleaving";
+import {
+  orderQueueByMaxContrast,
+  filterEligibleInterleavingCards,
+  InterleavingCardItem,
+} from "@/lib/algorithms/interleaving";
 import { Grade } from "ts-fsrs";
+
+function parseVectorEmbedding(raw: any): number[] | null {
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw.map(Number);
+  if (typeof raw === "string") {
+    try {
+      const clean = raw.trim();
+      if (clean.startsWith("[") && clean.endsWith("]")) {
+        return clean
+          .slice(1, -1)
+          .split(",")
+          .map((s) => parseFloat(s.trim()))
+          .filter((n) => !isNaN(n));
+      }
+      return JSON.parse(clean);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,7 +38,7 @@ export async function GET(request: NextRequest) {
     const dueOnly = searchParams.get("dueOnly") === "true";
 
     let query = `
-      SELECT c.*, z.domain_category, z.atomic_title 
+      SELECT c.*, z.domain_category, z.atomic_title, z.embedding 
       FROM fsrs_cards c
       JOIN permanent_zettels z ON c.zettel_uid = z.zettel_uid
       WHERE c.user_id = $1
@@ -25,24 +50,40 @@ export async function GET(request: NextRequest) {
 
     const res = await db.query(query, [userId]);
 
-    // Chuẩn hóa sang định dạng InterleavingCardItem và áp dụng Max-Contrast Greedy Ordering
+    // Chuẩn hóa sang định dạng InterleavingCardItem và bóc tách vector embedding 1536 chiều
     const rawCards: InterleavingCardItem[] = res.rows.map((row: any) => ({
       id: row.id,
       zettel_uid: row.zettel_uid,
       domain_category: row.domain_category || "General",
+      embedding: parseVectorEmbedding(row.embedding),
       reps: row.reps,
       state: row.state,
       elapsed_days: row.elapsed_days,
       scheduled_days: row.scheduled_days,
       front_prompt: row.front_prompt,
       back_structure: row.back_structure,
+      difficulty: row.difficulty,
     }));
 
-    const orderedCards = orderQueueByMaxContrast(rawCards);
+    // Thực thi nghiêm ngặt RULE-03 (Scaffolding vs. Interleaving):
+    // reps < 2 hoặc state !== 'REVIEW' -> scaffoldingPool (đơn miền)
+    // reps >= 2 và state === 'REVIEW' -> interleavingPool (trộn tương phản cực đại)
+    const { scaffoldingPool, interleavingPool } = filterEligibleInterleavingCards(rawCards);
+    const orderedInterleavedCards = orderQueueByMaxContrast(interleavingPool);
+
+    const orderedQueue: InterleavingCardItem[] = [
+      ...scaffoldingPool.map((c) => ({ ...c, poolType: "SCAFFOLDING" as const })),
+      ...orderedInterleavedCards.map((c) => ({ ...c, poolType: "INTERLEAVING" as const })),
+    ];
 
     return NextResponse.json({
       cards: res.rows,
-      orderedQueue: orderedCards,
+      orderedQueue,
+      stats: {
+        totalCards: rawCards.length,
+        scaffoldingCount: scaffoldingPool.length,
+        interleavingCount: interleavingPool.length,
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -105,6 +146,10 @@ export async function PUT(request: NextRequest) {
 
     const card = cardRes.rows[0];
 
+    // Cập nhật tốc độ phản hồi trung bình (moving average)
+    const oldAvgTime = Number(card.avg_response_time_sec || 90.0);
+    const newAvgTime = Math.round(oldAvgTime * 0.7 + Number(responseTimeSec) * 0.3);
+
     const result = scheduleFSRSCardReview({
       currentStability: card.stability,
       currentDifficulty: card.difficulty,
@@ -113,7 +158,7 @@ export async function PUT(request: NextRequest) {
       lapses: card.lapses,
       grade: grade as Grade,
       responseTimeSec: Number(responseTimeSec),
-      avgResponseTimeSec: card.avg_response_time_sec || 90.0,
+      avgResponseTimeSec: newAvgTime,
     });
 
     // Cập nhật thẻ vào cơ sở dữ liệu
@@ -127,8 +172,9 @@ export async function PUT(request: NextRequest) {
            lapses = $6,
            state = $7,
            due_date = $8,
-           last_review = $9
-       WHERE id = $10`,
+           last_review = $9,
+           avg_response_time_sec = $10
+       WHERE id = $11`,
       [
         result.card.stability,
         result.card.difficulty,
@@ -139,12 +185,32 @@ export async function PUT(request: NextRequest) {
         result.card.state,
         result.card.due_date,
         result.card.last_review,
+        newAvgTime,
         cardId,
       ]
     );
 
+    // Ghi nhận vào bảng lịch sử fsrs_review_logs để phục vụ FSRS Optimizer & Telemetry thực tế
+    await db.query(
+      `INSERT INTO fsrs_review_logs (
+        user_id, card_id, grade, stability_before, stability_after,
+        difficulty_before, difficulty_after, elapsed_days, response_time_sec
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        card.user_id,
+        cardId,
+        grade,
+        card.stability,
+        result.card.stability,
+        card.difficulty,
+        result.card.difficulty,
+        card.elapsed_days || 0,
+        Number(responseTimeSec),
+      ]
+    );
+
     return NextResponse.json({
-      updatedCard: { ...card, ...result.card },
+      updatedCard: { ...card, ...result.card, avg_response_time_sec: newAvgTime },
       schedulingResult: result,
     });
   } catch (error: any) {

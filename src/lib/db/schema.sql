@@ -267,3 +267,21 @@ DROP TRIGGER IF EXISTS trg_lock_decision_journal ON decision_journals;
 CREATE TRIGGER trg_lock_decision_journal
 BEFORE UPDATE ON decision_journals
 FOR EACH ROW EXECUTE FUNCTION prevent_locked_decision_mutation();
+
+-- 8. Bảng Lịch Sử Lượt Lật Thẻ FSRS (fsrs_review_logs / revlog)
+CREATE TABLE IF NOT EXISTS fsrs_review_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    card_id UUID NOT NULL REFERENCES fsrs_cards(id) ON DELETE CASCADE,
+    grade INT NOT NULL CHECK (grade BETWEEN 1 AND 4),
+    stability_before FLOAT NOT NULL,
+    stability_after FLOAT NOT NULL,
+    difficulty_before FLOAT NOT NULL,
+    difficulty_after FLOAT NOT NULL,
+    elapsed_days INT NOT NULL DEFAULT 0,
+    response_time_sec FLOAT NOT NULL,
+    reviewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_fsrs_review_logs_user_reviewed ON fsrs_review_logs (user_id, reviewed_at);
+

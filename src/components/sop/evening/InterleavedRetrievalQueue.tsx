@@ -166,6 +166,21 @@ export function InterleavedRetrievalQueue({
             <span className="px-2 py-0.5 bg-cyan-950 text-cyan-400 text-xs font-mono rounded border border-cyan-800">
               Miền: {currentCard.domain_category}
             </span>
+            {currentCard.poolType === "SCAFFOLDING" ? (
+              <span
+                className="px-2 py-0.5 bg-amber-950 text-amber-300 text-xs font-mono rounded border border-amber-800 flex items-center gap-1"
+                title="Khái niệm mới đang trong chu kỳ đóng gói cơ bản (reps < 2) theo RULE-03"
+              >
+                <span>Giàn giáo Đơn miền (RULE-03)</span>
+              </span>
+            ) : (
+              <span
+                className="px-2 py-0.5 bg-indigo-950 text-indigo-300 text-xs font-mono rounded border border-indigo-800 flex items-center gap-1"
+                title="Đã qua >= 2 chu kỳ đóng gói, đang trộn đan xen tương phản cực đại"
+              >
+                <span>Trộn Đan xen Đa miền</span>
+              </span>
+            )}
             {currentCard.is_leech && (
               <span className="px-2 py-0.5 bg-rose-950 text-rose-400 text-xs font-mono rounded border border-rose-800 flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" /> Thẻ Đỉa (Leech Quarantine)

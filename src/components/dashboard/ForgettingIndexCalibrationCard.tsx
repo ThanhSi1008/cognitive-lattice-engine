@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { ForgettingIndexMetric } from "@/lib/algorithms/telemetry";
-import { Target, Cpu, CheckCircle2, Sliders, ChevronDown, ChevronUp } from "lucide-react";
+import { Target, Cpu, CheckCircle2, Sliders, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 
 interface Props {
   fi: ForgettingIndexMetric;
@@ -10,6 +10,30 @@ interface Props {
 
 export function ForgettingIndexCalibrationCard({ fi }: Props) {
   const [showWeights, setShowWeights] = useState(false);
+  const [currentWeights, setCurrentWeights] = useState<number[]>(fi.weights);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizeMessage, setOptimizeMessage] = useState<string | null>(null);
+
+  const handleRunOptimizer = async () => {
+    setIsOptimizing(true);
+    try {
+      const res = await fetch("/api/telemetry/optimize-fsrs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCurrentWeights(data.optimizedWeights);
+        setOptimizeMessage(data.message);
+        setShowWeights(true);
+      }
+    } catch (err) {
+      console.error("Optimizer error:", err);
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
 
   return (
     <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between gap-4">
@@ -67,18 +91,39 @@ export function ForgettingIndexCalibrationCard({ fi }: Props) {
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowWeights(!showWeights)}
-          className="text-cyan-400 hover:text-cyan-300 text-[11px] flex items-center justify-between pt-1 border-t border-slate-800/80"
-        >
-          <span>Xem 19 Trọng Số Cá Nhân Hóa w = (w₀ ... w₁₈)</span>
-          {showWeights ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-        </button>
+        {/* Nút bấm chạy Tối Ưu Hóa 19 Trọng Số */}
+        <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={handleRunOptimizer}
+            disabled={isOptimizing}
+            className="flex-1 bg-emerald-950 hover:bg-emerald-900 border border-emerald-700/60 text-emerald-300 px-3 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+          >
+            <Sliders className="w-3.5 h-3.5 text-emerald-400" />
+            {isOptimizing ? "Đang tối ưu hóa hồi quy..." : "Chạy Tối Ưu Hóa Trọng Số FSRS-5"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowWeights(!showWeights)}
+            className="text-cyan-400 hover:text-cyan-300 text-[11px] px-2 py-1 flex items-center gap-1 rounded bg-slate-900 border border-slate-800"
+            title="Xem 19 Trọng số FSRS-5"
+          >
+            <span>w₀₋₁₈</span>
+            {showWeights ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+        </div>
+
+        {optimizeMessage && (
+          <div className="bg-emerald-950/60 border border-emerald-800/80 text-emerald-300 text-[10px] p-2 rounded flex items-start gap-1.5 animate-in fade-in duration-200">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+            <span>{optimizeMessage}</span>
+          </div>
+        )}
 
         {showWeights && (
           <div className="grid grid-cols-5 gap-1.5 text-[9px] font-mono text-slate-400 bg-slate-900 p-2 rounded border border-slate-800 mt-1 max-h-24 overflow-y-auto">
-            {fi.weights.map((w, idx) => (
+            {currentWeights.map((w, idx) => (
               <div key={idx} className="bg-slate-950 px-1 py-0.5 rounded text-center">
                 w{idx}: {w.toFixed(2)}
               </div>

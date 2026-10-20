@@ -1,0 +1,16 @@
+{
+  "name": "Cognitive Lattice Engine",
+  "short_name": "CLE",
+  "description": "Nền tảng Tối ưu Nhận thức & Quản trị Tri thức Chuyên sâu (SOP 60 Phút • FSRS-5 • Zettelkasten)",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

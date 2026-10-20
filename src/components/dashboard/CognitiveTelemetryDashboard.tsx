@@ -7,7 +7,11 @@ import { ForgettingIndexCalibrationCard } from "./ForgettingIndexCalibrationCard
 import { DecisionCalibrationMatrixCard } from "./DecisionCalibrationMatrixCard";
 import { Activity, RefreshCw } from "lucide-react";
 
-export function CognitiveTelemetryDashboard() {
+interface CognitiveTelemetryDashboardProps {
+  refreshTrigger?: number;
+}
+
+export function CognitiveTelemetryDashboard({ refreshTrigger }: CognitiveTelemetryDashboardProps = {}) {
   const [data, setData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -28,7 +32,7 @@ export function CognitiveTelemetryDashboard() {
 
   useEffect(() => {
     fetchTelemetry();
-  }, []);
+  }, [refreshTrigger]);
 
   if (loading && !data) {
     return (

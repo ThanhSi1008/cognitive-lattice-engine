@@ -5,8 +5,8 @@ import { countWords } from "@/lib/validations";
 import { TipTapEditor } from "@/components/editor/TipTapEditor";
 import { BiDirectionalLinkEngine, ZettelLinkItem } from "./BiDirectionalLinkEngine";
 import { PerturbationCardStudio, PerturbationCardItem } from "./PerturbationCardStudio";
-import { SocraticProbeResult } from "@/lib/ai/socratic-engine";
-import { CheckCircle2, AlertCircle, FileText, Send, Split, Sparkles, Brain, ArrowDown } from "lucide-react";
+import { SocraticProbeResult, SocraticEvaluationResult } from "@/lib/ai/socratic-engine";
+import { CheckCircle2, AlertCircle, FileText, Send, Split, Sparkles, Brain, ArrowDown, MessageSquare, AlertTriangle } from "lucide-react";
 
 interface LiteratureNotePreview {
   id: string;
@@ -59,6 +59,10 @@ export function AtomicZettelStudio({
   // Socratic Mentor Evaluation State
   const [socraticResult, setSocraticResult] = useState<SocraticProbeResult | null>(null);
   const [isProbing, setIsProbing] = useState(false);
+  const [activeReplyIndex, setActiveReplyIndex] = useState<number | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [evaluatingReply, setEvaluatingReply] = useState(false);
+  const [probeEvaluations, setProbeEvaluations] = useState<Record<number, SocraticEvaluationResult>>({});
 
   const wordCount = countWords(bodyText);
   const isWordCountValid = wordCount >= 100 && wordCount <= 350;
@@ -71,6 +75,35 @@ export function AtomicZettelStudio({
   const isCardsValid = cards.length >= 2 && cards.length <= 3;
 
   const canPublish = isWordCountValid && isTitleValid && isLinksValid && isCardsValid;
+
+  const handleSendReply = async (index: number, probe: any) => {
+    if (!replyText.trim() || evaluatingReply) return;
+    setEvaluatingReply(true);
+    try {
+      const res = await fetch("/api/ai/socratic-probe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phase: "EVALUATE_REPLY",
+          input: {
+            probeQuestion: probe.question,
+            probeCategory: probe.category,
+            userReply: replyText.trim(),
+            contextText: `${atomicTitle}\n\n${bodyText}`,
+          },
+        }),
+      });
+      if (res.ok) {
+        const data: SocraticEvaluationResult = await res.json();
+        setProbeEvaluations((prev) => ({ ...prev, [index]: data }));
+        setReplyText("");
+      }
+    } catch (err) {
+      console.error("Reply evaluation error:", err);
+    } finally {
+      setEvaluatingReply(false);
+    }
+  };
 
   const handleSocraticAudit = async () => {
     if (!atomicTitle.trim() || !bodyText.trim() || isProbing) return;
@@ -387,6 +420,98 @@ export function AtomicZettelStudio({
                         👉 Hướng hoàn thiện: {socraticResult.abstractnessEvaluation.suggestedRefactoringVector}
                       </p>
                     )}
+                  </div>
+                )}
+
+                {/* Socratic Probes & Multi-turn Dialogue */}
+                {socraticResult.probes && socraticResult.probes.length > 0 && (
+                  <div className="flex flex-col gap-2.5 pb-3 border-b border-slate-800">
+                    <div className="text-xs font-semibold text-purple-300">
+                      Truy Vấn Socratic Đa Tác Tử (Socrates – Theaetetus – Plato):
+                    </div>
+                    <div className="grid grid-cols-1 gap-2.5">
+                      {socraticResult.probes.map((probe, i) => {
+                        const evalData = probeEvaluations[i];
+                        const isReplying = activeReplyIndex === i;
+
+                        return (
+                          <div key={i} className="bg-slate-900/60 border border-slate-800 rounded p-3 flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-mono font-bold text-cyan-400">
+                                [{probe.category}] {probe.categoryLabel}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setActiveReplyIndex(isReplying ? null : i)}
+                                className="text-[10px] font-mono text-purple-400 hover:text-purple-300 flex items-center gap-1 cursor-pointer bg-purple-950/60 px-2 py-0.5 rounded border border-purple-800"
+                              >
+                                <MessageSquare className="w-3 h-3" />
+                                {isReplying ? "Đóng" : "Trả lời Socrates"}
+                              </button>
+                            </div>
+                            <div className="text-xs text-slate-200">{probe.question}</div>
+
+                            {/* Interactive Reply Field */}
+                            {isReplying && (
+                              <div className="mt-2 pt-2 border-t border-slate-800 flex flex-col gap-2">
+                                <textarea
+                                  rows={2}
+                                  value={replyText}
+                                  onChange={(e) => setReplyText(e.target.value)}
+                                  placeholder="Nhập lập luận phản biện nguyên lý gốc của bạn (tối thiểu 5-10 từ)..."
+                                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500"
+                                />
+                                <div className="flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendReply(i, probe)}
+                                    disabled={!replyText.trim() || evaluatingReply}
+                                    className="bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1 rounded font-semibold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                                  >
+                                    <Send className="w-3 h-3" />
+                                    {evaluatingReply ? "Plato đang thẩm định..." : "Gửi Phản Hồi"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Socratic Critique & Next Question */}
+                            {evalData && (
+                              <div className="mt-2 p-2.5 bg-purple-950/40 border border-purple-800/80 rounded flex flex-col gap-1 text-[11px]">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-purple-300">
+                                    Thẩm định Socratic:
+                                  </span>
+                                  <span
+                                    className={`font-mono text-[9px] px-1.5 py-0.5 rounded border ${
+                                      evalData.reachedFirstPrinciples
+                                        ? "bg-emerald-950 text-emerald-400 border-emerald-800"
+                                        : "bg-amber-950 text-amber-400 border-amber-800"
+                                    }`}
+                                  >
+                                    {evalData.reachedFirstPrinciples ? "Đạt Nguyên Lý Gốc" : "Chưa Đạt"} (
+                                    {Math.round(evalData.firstPrinciplesScore * 100)}%)
+                                  </span>
+                                </div>
+                                <p className="text-slate-300 italic">{evalData.socraticCritique}</p>
+                                {evalData.identifiedBlindSpots.length > 0 && (
+                                  <div className="text-amber-300 flex items-start gap-1">
+                                    <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0 mt-0.5" />
+                                    <span>Điểm mù: {evalData.identifiedBlindSpots.join("; ")}</span>
+                                  </div>
+                                )}
+                                <div className="bg-slate-950 p-1.5 rounded border border-purple-900/60 mt-0.5">
+                                  <span className="text-[10px] font-mono text-cyan-400 block font-bold">
+                                    Câu hỏi xoáy sâu tiếp theo:
+                                  </span>
+                                  <span className="text-slate-200">{evalData.nextProbingQuestion}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 

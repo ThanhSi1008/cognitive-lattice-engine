@@ -15,6 +15,7 @@ export interface InterleavingCardItem {
   back_structure?: string;
   difficulty?: number;
   is_leech?: boolean;
+  poolType?: "SCAFFOLDING" | "INTERLEAVING";
 }
 
 export const ALPHA_DOMAIN_WEIGHT = 0.4;
