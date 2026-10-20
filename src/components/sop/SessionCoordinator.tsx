@@ -117,6 +117,10 @@ export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = 
   }
 
   const isTripped = governor?.isCircuitBreakerTripped || false;
+  const morningMinutes = governor?.sessionSchedule?.morningMinutes ?? 20;
+  const afternoonMinutes = governor?.sessionSchedule?.afternoonMinutes ?? 20;
+  const eveningMinutes = governor?.sessionSchedule?.eveningMinutes ?? 20;
+  const isElasticAdaptive = governor?.mode === "ELASTIC_ADAPTIVE";
 
   return (
     <div className="flex flex-col gap-8">
@@ -138,10 +142,30 @@ export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = 
 
           <button
             onClick={() => setActiveTab("REFACTORING")}
-            className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-lg text-xs transition shrink-0"
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-lg text-xs transition shrink-0 cursor-pointer"
           >
             Vào Chế Độ Tái Cấu Trúc
           </button>
+        </div>
+      )}
+
+      {/* Elastic Adaptive Schedule Banner (1.0 < DRLI <= 1.5 - Mục 2.3.3) */}
+      {isElasticAdaptive && !isTripped && (
+        <div className="bg-amber-950/70 border border-amber-800 text-amber-200 p-4 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 animate-in fade-in">
+          <div className="flex items-start gap-3">
+            <Activity className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-bold text-xs uppercase text-amber-300">
+                CHẾ ĐỘ THÍCH ỨNG CO GIÃN THEO DRLI ({governor?.drli}) • MỤC 2.3.3
+              </div>
+              <p className="text-xs text-amber-200 mt-0.5">
+                Áp lực ôn tập quá hạn (DRLI &gt; 1.0). Bộ điều tốc Dung lượng 5%/95% đã tự động rút ngắn Phiên Sáng xuống <strong>{morningMinutes} phút</strong> và kéo dài Phiên Tối lên <strong>{eveningMinutes} phút</strong> ({governor?.sessionSchedule?.eveningReviewBudgetSec ? Math.round(governor.sessionSchedule.eveningReviewBudgetSec / 60) : 20}m ôn thẻ) để bảo vệ kho tri thức cũ.
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 bg-amber-900/80 text-amber-300 text-xs font-mono rounded-lg border border-amber-700 shrink-0 font-bold">
+            {morningMinutes}m Sáng / {eveningMinutes}m Tối
+          </span>
         </div>
       )}
 
@@ -159,7 +183,14 @@ export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = 
         >
           <Sun className="w-4 h-4 text-cyan-400" />
           <div className="text-left">
-            <div>Phân Hệ 1 • Sáng (20m)</div>
+            <div className="flex items-center gap-1.5">
+              <span>Phân Hệ 1 • Sáng ({morningMinutes}m)</span>
+              {isElasticAdaptive && (
+                <span className="px-1.5 py-0.2 bg-amber-950 text-amber-300 text-[9px] rounded border border-amber-800 font-mono">
+                  -10m
+                </span>
+              )}
+            </div>
             <div className="text-[10px] text-slate-500 font-normal">Tiếp thu chủ động</div>
           </div>
         </button>
@@ -189,7 +220,7 @@ export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = 
         >
           <Sunset className="w-4 h-4 text-purple-400" />
           <div className="text-left">
-            <div>Phân Hệ 3 • Chiều (20m)</div>
+            <div>Phân Hệ 3 • Chiều ({afternoonMinutes}m)</div>
             <div className="text-[10px] text-slate-500 font-normal">Xưởng Zettelkasten</div>
           </div>
         </button>
@@ -204,7 +235,14 @@ export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = 
         >
           <Moon className="w-4 h-4 text-emerald-400" />
           <div className="text-left">
-            <div>Phân Hệ 4 • Tối (20m)</div>
+            <div className="flex items-center gap-1.5">
+              <span>Phân Hệ 4 • Tối ({eveningMinutes}m)</span>
+              {isElasticAdaptive && (
+                <span className="px-1.5 py-0.2 bg-amber-950 text-amber-300 text-[9px] rounded border border-amber-800 font-mono">
+                  +10m
+                </span>
+              )}
+            </div>
             <div className="text-[10px] text-slate-500 font-normal">Truy xuất & Quyết định</div>
           </div>
         </button>

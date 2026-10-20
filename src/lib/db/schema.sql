@@ -285,3 +285,12 @@ CREATE TABLE IF NOT EXISTS fsrs_review_logs (
 
 CREATE INDEX IF NOT EXISTS idx_fsrs_review_logs_user_reviewed ON fsrs_review_logs (user_id, reviewed_at);
 
+-- 9. Bảng Cấu Hình Nhận Thức Cá Nhân (user_cognitive_settings)
+CREATE TABLE IF NOT EXISTS user_cognitive_settings (
+    user_id UUID PRIMARY KEY,
+    desired_retention FLOAT NOT NULL DEFAULT 0.90 CHECK (desired_retention BETWEEN 0.80 AND 0.95),
+    fsrs_weights JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+

@@ -99,6 +99,7 @@ export function scheduleFSRSCardReview(params: {
   avgResponseTimeSec?: number;
   reviewDate?: Date;
   requestRetention?: number;
+  customWeights?: number[];
 }): FSRSSchedulingResult {
   const {
     currentStability,
@@ -111,6 +112,7 @@ export function scheduleFSRSCardReview(params: {
     avgResponseTimeSec = 90.0,
     reviewDate = new Date(),
     requestRetention = DEFAULT_REQUEST_RETENTION,
+    customWeights,
   } = params;
 
   // Tính khả năng truy xuất R ngay trước thời điểm ôn tập
@@ -121,6 +123,7 @@ export function scheduleFSRSCardReview(params: {
   const f = fsrs({
     request_retention: requestRetention,
     maximum_interval: 36500,
+    w: customWeights && customWeights.length === 19 ? (customWeights as any) : undefined,
   });
 
   const now = reviewDate;

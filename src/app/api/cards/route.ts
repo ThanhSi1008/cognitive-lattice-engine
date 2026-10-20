@@ -150,6 +150,30 @@ export async function PUT(request: NextRequest) {
     const oldAvgTime = Number(card.avg_response_time_sec || 90.0);
     const newAvgTime = Math.round(oldAvgTime * 0.7 + Number(responseTimeSec) * 0.3);
 
+    // Đọc cấu hình nhận thức cá nhân (desired_retention, fsrs_weights) từ user_cognitive_settings
+    let customRetention = 0.90;
+    let customWeights: number[] | undefined = undefined;
+    try {
+      const settingsRes = await db.query(
+        `SELECT desired_retention, fsrs_weights FROM user_cognitive_settings WHERE user_id = $1`,
+        [card.user_id]
+      );
+      if (settingsRes.rows.length > 0) {
+        customRetention = Number(settingsRes.rows[0].desired_retention) || 0.90;
+        let w = settingsRes.rows[0].fsrs_weights;
+        if (typeof w === "string") {
+          try {
+            w = JSON.parse(w);
+          } catch {}
+        }
+        if (Array.isArray(w) && w.length === 19) {
+          customWeights = w.map(Number);
+        }
+      }
+    } catch {
+      // Dùng cấu hình chuẩn nếu bảng chưa khởi tạo
+    }
+
     const result = scheduleFSRSCardReview({
       currentStability: card.stability,
       currentDifficulty: card.difficulty,
@@ -159,6 +183,8 @@ export async function PUT(request: NextRequest) {
       grade: grade as Grade,
       responseTimeSec: Number(responseTimeSec),
       avgResponseTimeSec: newAvgTime,
+      requestRetention: customRetention,
+      customWeights,
     });
 
     // Cập nhật thẻ vào cơ sở dữ liệu

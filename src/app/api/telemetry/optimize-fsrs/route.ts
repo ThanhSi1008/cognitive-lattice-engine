@@ -48,13 +48,27 @@ export async function POST(req: NextRequest) {
     const rmseBefore = 0.028; // 2.8%
     const rmseAfter = Number(Math.max(0.019, rmseBefore - Math.min(0.007, revlogsCount * 0.0001 + 0.004)).toFixed(4));
 
+    const desiredRetention = Number(body.desiredRetention) || 0.90;
+
+    // Lưu bền vững bộ 19 trọng số và desired_retention vào user_cognitive_settings
+    await db.query(
+      `INSERT INTO user_cognitive_settings (user_id, desired_retention, fsrs_weights, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id) DO UPDATE
+       SET desired_retention = EXCLUDED.desired_retention,
+           fsrs_weights = EXCLUDED.fsrs_weights,
+           updated_at = NOW()`,
+      [userId, desiredRetention, JSON.stringify(optimizedWeights)]
+    );
+
     return NextResponse.json({
       success: true,
       revlogsAnalyzed: revlogsCount,
       actualRetention: Number((actualRetention * 100).toFixed(1)),
-      targetRetention: 90.0,
+      targetRetention: Number((desiredRetention * 100).toFixed(1)),
       originalWeights,
       optimizedWeights,
+      desiredRetention,
       rmseReduction: {
         rmseBefore,
         rmseAfter,
@@ -62,8 +76,8 @@ export async function POST(req: NextRequest) {
       },
       message:
         revlogsCount >= 400
-          ? `Đã tối ưu hóa 19 trọng số FSRS-5 thành công trên ${revlogsCount} lượt ôn tập thực tế! Sai số RMSE giảm từ ${(rmseBefore * 100).toFixed(1)}% xuống ${(rmseAfter * 100).toFixed(1)}%.`
-          : `Đã hiệu chuẩn tham số FSRS-5 thích ứng dựa trên ${revlogsCount} lượt ôn tập thực nghiệm. Hãy tiếp tục tích lũy tới 400 lượt để đạt độ chính xác tối ưu.`,
+          ? `Đã tối ưu hóa và lưu bền vững 19 trọng số FSRS-5 (R = ${Math.round(desiredRetention * 100)}%) trên ${revlogsCount} lượt ôn tập thực tế! Sai số RMSE giảm từ ${(rmseBefore * 100).toFixed(1)}% xuống ${(rmseAfter * 100).toFixed(1)}%.`
+          : `Đã hiệu chuẩn và lưu bền vững 19 trọng số FSRS-5 (R = ${Math.round(desiredRetention * 100)}%) trên ${revlogsCount} lượt ôn tập.`,
     });
   } catch (err: any) {
     console.error("[API/TELEMETRY/OPTIMIZE-FSRS]", err);

@@ -22,7 +22,31 @@ export async function GET(request: NextRequest) {
     const weeklyCount = parseInt(velocityRes.rows[0]?.count || "0", 10);
     const velocity = calculateZettelVelocity(weeklyCount > 0 ? weeklyCount : 4); // Nếu chưa có thì mô phỏng 4 để hiển thị
 
-    // 2. Lấy dữ liệu ổn định và thẻ FSRS từ fsrs_review_logs thực tế
+    // 2. Lấy dữ liệu cấu hình nhận thức cá nhân (user_cognitive_settings)
+    let userWeights = DEFAULT_FSRS5_WEIGHTS;
+    let desiredRetention = 0.90;
+    try {
+      const settingsRes = await db.query(
+        `SELECT desired_retention, fsrs_weights FROM user_cognitive_settings WHERE user_id = $1`,
+        [userId]
+      );
+      if (settingsRes.rows.length > 0) {
+        desiredRetention = Number(settingsRes.rows[0].desired_retention) || 0.90;
+        let w = settingsRes.rows[0].fsrs_weights;
+        if (typeof w === "string") {
+          try {
+            w = JSON.parse(w);
+          } catch {}
+        }
+        if (Array.isArray(w) && w.length === 19) {
+          userWeights = w.map(Number);
+        }
+      }
+    } catch {
+      // Dùng mặc định
+    }
+
+    // 3. Lấy dữ liệu ổn định và thẻ FSRS từ fsrs_review_logs thực tế
     const revlogsRes = await db.query(
       `SELECT stability_before, stability_after, difficulty_before, difficulty_after,
               elapsed_days, grade, response_time_sec, reviewed_at
@@ -48,7 +72,7 @@ export async function GET(request: NextRequest) {
 
       const totalRevlogs = revlogsRes.rows.length;
       const lapsesCount = revlogsRes.rows.filter((r: any) => Number(r.grade) === 1).length;
-      fiMetric = calibrateForgettingIndex(totalRevlogs, lapsesCount, DEFAULT_FSRS5_WEIGHTS);
+      fiMetric = calibrateForgettingIndex(totalRevlogs, lapsesCount, userWeights);
     } else {
       // Dữ liệu ban đầu khi người dùng mới chưa phát sinh lượt ôn tập nào
       const cardsRes = await db.query<{
@@ -82,7 +106,7 @@ export async function GET(request: NextRequest) {
       fiMetric = calibrateForgettingIndex(
         totalReps > 0 ? totalReps : 432,
         totalLapses > 0 ? totalLapses : 41,
-        DEFAULT_FSRS5_WEIGHTS
+        userWeights
       );
     }
 
@@ -180,6 +204,10 @@ export async function GET(request: NextRequest) {
       velocity,
       stabilityMetric,
       fiMetric,
+      userCognitiveSettings: {
+        desiredRetention,
+        weights: userWeights,
+      },
       decisionCalibration: {
         averageBrierScore: avgBrier,
         totalAudited: decisionsRes.rows.length || 6,
@@ -195,5 +223,36 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const db = await getDb();
+    const body = await request.json();
+    const userId = body.userId || "00000000-0000-0000-0000-000000000001";
+    const desiredRetention = Number(body.desiredRetention) || 0.90;
+    const weights = body.weights || DEFAULT_FSRS5_WEIGHTS;
+
+    await db.query(
+      `INSERT INTO user_cognitive_settings (user_id, desired_retention, fsrs_weights, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (user_id) DO UPDATE
+       SET desired_retention = EXCLUDED.desired_retention,
+           fsrs_weights = COALESCE(EXCLUDED.fsrs_weights, user_cognitive_settings.fsrs_weights),
+           updated_at = NOW()`,
+      [userId, desiredRetention, JSON.stringify(weights)]
+    );
+
+    return NextResponse.json({
+      success: true,
+      desiredRetention,
+      weights,
+      message: `Đã cập nhật mục tiêu lưu giữ R = ${Math.round(desiredRetention * 100)}% (${
+        desiredRetention === 0.85 ? "Ma sát cao" : "Tiêu chuẩn"
+      }).`,
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 }

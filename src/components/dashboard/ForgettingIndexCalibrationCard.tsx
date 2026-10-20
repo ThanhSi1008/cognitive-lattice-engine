@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { ForgettingIndexMetric } from "@/lib/algorithms/telemetry";
-import { Target, Cpu, CheckCircle2, Sliders, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { Target, Cpu, CheckCircle2, Sliders, ChevronDown, ChevronUp, Sparkles, Flame } from "lucide-react";
 
 interface Props {
   fi: ForgettingIndexMetric;
@@ -11,8 +11,26 @@ interface Props {
 export function ForgettingIndexCalibrationCard({ fi }: Props) {
   const [showWeights, setShowWeights] = useState(false);
   const [currentWeights, setCurrentWeights] = useState<number[]>(fi.weights);
+  const [retentionMode, setRetentionMode] = useState<number>(0.90);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizeMessage, setOptimizeMessage] = useState<string | null>(null);
+
+  const handleToggleRetention = async (newRetention: number) => {
+    setRetentionMode(newRetention);
+    try {
+      const res = await fetch("/api/telemetry", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ desiredRetention: newRetention, weights: currentWeights }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setOptimizeMessage(data.message);
+      }
+    } catch (err) {
+      console.error("Lỗi cập nhật retention:", err);
+    }
+  };
 
   const handleRunOptimizer = async () => {
     setIsOptimizing(true);
@@ -20,7 +38,7 @@ export function ForgettingIndexCalibrationCard({ fi }: Props) {
       const res = await fetch("/api/telemetry/optimize-fsrs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ desiredRetention: retentionMode }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -37,20 +55,38 @@ export function ForgettingIndexCalibrationCard({ fi }: Props) {
 
   return (
     <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between gap-4">
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
         <div className="flex items-center gap-2 text-emerald-400 font-semibold text-xs">
           <Target className="w-4 h-4" />
           <span>Forgetting Index & Optimizer</span>
         </div>
-        <span
-          className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-            fi.isWithinTargetRange
-              ? "bg-emerald-950 text-emerald-400 border-emerald-800"
-              : "bg-amber-950 text-amber-400 border-amber-800"
-          }`}
-        >
-          FI Mục Tiêu: 10% (R = 90%)
-        </span>
+
+        {/* Chuyển đổi giữa Chế độ Tiêu Chuẩn (R=90%) và Ma Sát Cao (R=85%) */}
+        <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[10px] font-mono">
+          <button
+            type="button"
+            onClick={() => handleToggleRetention(0.90)}
+            className={`px-2 py-0.5 rounded transition cursor-pointer ${
+              retentionMode === 0.90
+                ? "bg-emerald-950 text-emerald-300 border border-emerald-700 font-bold"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            Tiêu chuẩn (R = 90%)
+          </button>
+          <button
+            type="button"
+            onClick={() => handleToggleRetention(0.85)}
+            className={`px-2 py-0.5 rounded transition cursor-pointer flex items-center gap-1 ${
+              retentionMode === 0.85
+                ? "bg-amber-950 text-amber-300 border border-amber-700 font-bold"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Flame className="w-3 h-3 text-amber-400" />
+            Ma sát cao (R = 85%)
+          </button>
+        </div>
       </div>
 
       <div>

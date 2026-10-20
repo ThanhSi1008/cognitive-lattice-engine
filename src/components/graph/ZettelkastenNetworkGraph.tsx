@@ -2,7 +2,20 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import cytoscape, { Core, NodeSingular } from "cytoscape";
-import { Network, Search, Filter, ZoomIn, ZoomOut, Maximize2, Sparkles, Layers } from "lucide-react";
+import {
+  Network,
+  Search,
+  Filter,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Sparkles,
+  Layers,
+  Download,
+  X,
+  FileText,
+  Link2,
+} from "lucide-react";
 
 interface NodeData {
   id: string;
@@ -45,9 +58,35 @@ export function ZettelkastenNetworkGraph({
   const cyRef = useRef<Core | null>(null);
 
   const [selectedNode, setSelectedNode] = useState<NodeData | null>(null);
+  const [selectedZettelDetail, setSelectedZettelDetail] = useState<{ zettel: any; links: any[] } | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDomain, setSelectedDomain] = useState("ALL");
   const [graphStats, setGraphStats] = useState({ nodesCount: 0, edgesCount: 0, isClustered: false });
+
+  const handleExportVault = async () => {
+    setIsExporting(true);
+    try {
+      const res = await fetch("/api/vault/export");
+      if (res.ok) {
+        const data = await res.json();
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `cle-vault-export-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      console.error("Lỗi xuất vault:", e);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -141,14 +180,29 @@ export function ZettelkastenNetworkGraph({
         },
       });
 
-      cy.on("tap", "node", (evt) => {
+      cy.on("tap", "node", async (evt) => {
         const node = evt.target;
-        setSelectedNode(node.data());
+        const data = node.data();
+        setSelectedNode(data);
+        setSelectedZettelDetail(null);
+        setIsLoadingDetail(true);
+        try {
+          const res = await fetch(`/api/zettels?uid=${data.id}`);
+          if (res.ok) {
+            const zData = await res.json();
+            setSelectedZettelDetail(zData);
+          }
+        } catch (e) {
+          console.error("Lỗi tải chi tiết Zettel:", e);
+        } finally {
+          setIsLoadingDetail(false);
+        }
       });
 
       cy.on("tap", (evt) => {
         if (evt.target === cy) {
           setSelectedNode(null);
+          setSelectedZettelDetail(null);
         }
       });
 
@@ -276,6 +330,18 @@ export function ZettelkastenNetworkGraph({
               <Maximize2 className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Nút Xuất Hộp Phiếu Local-First */}
+          <button
+            type="button"
+            onClick={handleExportVault}
+            disabled={isExporting}
+            className="flex items-center gap-1.5 px-3 py-2 bg-purple-950 hover:bg-purple-900 border border-purple-800 text-purple-300 rounded-lg text-xs font-mono transition cursor-pointer disabled:opacity-50"
+            title="Xuất toàn bộ hộp phiếu Zettelkasten & Quyết định (JSON/Markdown)"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>{isExporting ? "Đang xuất..." : "Xuất Hộp Phiếu"}</span>
+          </button>
         </div>
       </div>
 
@@ -285,15 +351,71 @@ export function ZettelkastenNetworkGraph({
 
         {/* Selected Node Details Drawer */}
         {selectedNode && (
-          <div className="absolute bottom-4 left-4 right-4 md:right-auto md:w-96 bg-slate-900/95 border border-slate-700/80 rounded-xl p-4 shadow-2xl backdrop-blur-md flex flex-col gap-2 text-xs animate-in slide-in-from-bottom-2">
+          <div className="absolute bottom-4 left-4 right-4 md:right-auto md:w-[420px] max-h-[460px] overflow-y-auto bg-slate-900/95 border border-cyan-800/80 rounded-xl p-4 shadow-2xl backdrop-blur-md flex flex-col gap-2.5 text-xs animate-in slide-in-from-bottom-2 z-20">
             <div className="flex justify-between items-start">
-              <span className="font-mono text-cyan-400 font-bold">[[{selectedNode.id}]]</span>
-              <span className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded text-[10px] font-mono">
-                {selectedNode.domain}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-cyan-400 font-bold">[[{selectedNode.id}]]</span>
+                <span className="px-2 py-0.5 bg-slate-800 text-slate-300 rounded text-[10px] font-mono">
+                  {selectedNode.domain}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedNode(null);
+                  setSelectedZettelDetail(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded cursor-pointer"
+                title="Đóng"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
+
             <h4 className="font-bold text-white text-sm leading-snug">{selectedNode.title}</h4>
-            <div className="flex items-center gap-3 text-slate-400 text-[11px] font-mono pt-1 border-t border-slate-800">
+
+            {isLoadingDetail ? (
+              <div className="text-[11px] font-mono text-slate-500 italic py-2">
+                Đang nạp toàn văn và liên kết hai chiều...
+              </div>
+            ) : selectedZettelDetail?.zettel ? (
+              <div className="flex flex-col gap-2 pt-1 border-t border-slate-800">
+                <div className="text-slate-300 leading-relaxed bg-slate-950 p-2.5 rounded border border-slate-800/80 max-h-36 overflow-y-auto font-sans text-[11px]">
+                  {selectedZettelDetail.zettel.body_text}
+                </div>
+
+                {/* Bi-directional links list */}
+                {selectedZettelDetail.links && selectedZettelDetail.links.length > 0 && (
+                  <div className="flex flex-col gap-1.5 pt-1">
+                    <span className="font-mono text-[10px] text-cyan-400 font-bold flex items-center gap-1">
+                      <Link2 className="w-3 h-3" /> Liên kết hai chiều ({selectedZettelDetail.links.length}):
+                    </span>
+                    <div className="flex flex-col gap-1 max-h-24 overflow-y-auto">
+                      {selectedZettelDetail.links.map((link: any, i: number) => {
+                        const targetUid =
+                          link.source_zettel_uid === selectedNode.id
+                            ? link.target_zettel_uid
+                            : link.source_zettel_uid;
+                        return (
+                          <div
+                            key={i}
+                            className="bg-slate-950 p-1.5 rounded border border-slate-800 text-[10px] flex flex-col gap-0.5"
+                          >
+                            <div className="flex items-center justify-between font-mono">
+                              <span className="text-purple-300 font-semibold">[[{targetUid}]]</span>
+                              <span className="text-slate-500 text-[9px]">{link.link_type}</span>
+                            </div>
+                            <span className="text-slate-400 italic">{link.connection_rationale}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            <div className="flex items-center justify-between text-slate-400 text-[10px] font-mono pt-1.5 border-t border-slate-800">
               <span>Độ dài: {selectedNode.wordCount} từ</span>
               <span>Trạng thái: {selectedNode.state}</span>
             </div>

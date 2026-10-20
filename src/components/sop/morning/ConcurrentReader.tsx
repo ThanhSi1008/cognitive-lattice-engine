@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { CriticalAuditWidget, CriticalAuditData } from "./CriticalAuditWidget";
 import { AnalogicalMatrixWidget, AnalogicalDomainItem } from "./AnalogicalMatrixWidget";
-import { BookOpen, AlertCircle, ArrowRight, Lightbulb } from "lucide-react";
+import { BookOpen, AlertCircle, ArrowRight, Lightbulb, Network, Sparkles, Layers } from "lucide-react";
 
 interface ConcurrentReaderProps {
   conceptTitle: string;
@@ -24,6 +24,33 @@ export function ConcurrentReader({
 }: ConcurrentReaderProps) {
   const [selfExplanation, setSelfExplanation] = useState("");
   const [highlightWarning, setHighlightWarning] = useState(false);
+  const [priorZettels, setPriorZettels] = useState<any[]>([]);
+  const [isLoadingPrior, setIsLoadingPrior] = useState(true);
+
+  // Kích hoạt sơ đồ tri thức nền (Prior Knowledge Schemas Activated - arXiv:2025 Mục 4.2)
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPriorSchemas = async () => {
+      try {
+        const queryTerm = conceptTitle.split(/[:•–—-]/)[0].trim();
+        const res = await fetch(`/api/zettels?q=${encodeURIComponent(queryTerm)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) {
+            setPriorZettels((data.zettels || []).slice(0, 3));
+          }
+        }
+      } catch (err) {
+        console.error("Lỗi kích hoạt sơ đồ tri thức nền:", err);
+      } finally {
+        if (isMounted) setIsLoadingPrior(false);
+      }
+    };
+    fetchPriorSchemas();
+    return () => {
+      isMounted = false;
+    };
+  }, [conceptTitle]);
 
   const [criticalAudit, setCriticalAudit] = useState<CriticalAuditData>({
     pico_frame: {
@@ -145,6 +172,47 @@ export function ConcurrentReader({
               <p>{block}</p>
             </div>
           ))}
+
+          {/* Sơ đồ tri thức nền được kích hoạt (Prior Knowledge Schemas Activated) */}
+          <div className="mt-2 pt-3 border-t border-slate-800 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-purple-300 flex items-center gap-1.5 font-mono text-[11px]">
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                Sơ Đồ Tri Thức Nền Kích Hoạt (Prior Schemas)
+              </span>
+              <span className="text-[10px] font-mono text-slate-500">Mục 4.2 arXiv:2025</span>
+            </div>
+
+            {isLoadingPrior ? (
+              <div className="text-[11px] font-mono text-slate-500 italic">
+                Đang quét vector các sơ đồ tri thức nền liên quan...
+              </div>
+            ) : priorZettels.length > 0 ? (
+              <div className="grid grid-cols-1 gap-2">
+                {priorZettels.map((z) => (
+                  <div
+                    key={z.zettel_uid}
+                    className="p-2.5 rounded bg-purple-950/20 border border-purple-800/40 text-xs flex flex-col gap-1 hover:border-purple-600 transition"
+                  >
+                    <div className="flex items-center justify-between text-[10px] font-mono">
+                      <span className="text-cyan-400 font-bold">[[{z.zettel_uid}]]</span>
+                      <span className="px-1.5 py-0.2 bg-slate-900 text-slate-400 rounded">
+                        {z.domain_category}
+                      </span>
+                    </div>
+                    <div className="font-semibold text-slate-200 line-clamp-1">{z.atomic_title}</div>
+                    <div className="text-[11px] text-slate-400 line-clamp-2 italic">
+                      {z.body_text}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-[11px] text-slate-500 italic p-2 bg-slate-900/40 rounded border border-slate-800/60">
+                Chưa có Zettel cũ nào liên quan trực tiếp. Khái niệm này sẽ là hạt mầm tri thức mới cho hộp phiếu.
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Right Column: Mandatory Analysis Sidebar */}
