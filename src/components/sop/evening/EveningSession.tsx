@@ -150,6 +150,7 @@ export function EveningSession({
               console.error("Lỗi lưu s3_blank_recall_data:", e);
             }
           }}
+          onProceedToRetrievalQueue={() => setSubStep("RETRIEVAL_4_2")}
         />
       )}
 

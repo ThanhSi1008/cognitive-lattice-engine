@@ -45,6 +45,12 @@ export const CleAnalogicalDomainItemSchema = z.object({
   structural_invariant_shared: z.string().min(3, "Quy luật bất biến tối thiểu 3 ký tự"),
 });
 
+export const ClePerturbationScenariosSchema = z.object({
+  counterfactual: z.string().min(20, "Tình huống phản thực tế tối thiểu 20 ký tự"),
+  interleaved_contrast: z.string().min(20, "Tình huống tương phản đan xen tối thiểu 20 ký tự"),
+  far_transfer: z.string().min(20, "Tình huống chuyển giao xa tối thiểu 20 ký tự"),
+});
+
 export const CleIngestModuleSchema = z.object({
   day: z.number().int().positive().optional().default(1),
   module_id: z.string().optional().default("MOD_01"),
@@ -54,6 +60,7 @@ export const CleIngestModuleSchema = z.object({
   source_blocks: z.array(z.string().min(10)).min(2, "Phải có tối thiểu 2 khối luận điểm nguồn"),
   critical_audit_scaffold: CleCriticalAuditScaffoldSchema.optional(),
   analogical_matrix_scaffold: z.array(CleAnalogicalDomainItemSchema).optional(),
+  perturbation_scenarios: ClePerturbationScenariosSchema.optional(),
 });
 
 export const CleExternalAiPayloadSchema = z.object({
@@ -67,6 +74,7 @@ export type CleCitation = z.infer<typeof CleCitationSchema>;
 export type ClePicoFrame = z.infer<typeof ClePicoFrameSchema>;
 export type CleCriticalAuditScaffold = z.infer<typeof CleCriticalAuditScaffoldSchema>;
 export type CleAnalogicalDomainItem = z.infer<typeof CleAnalogicalDomainItemSchema>;
+export type ClePerturbationScenarios = z.infer<typeof ClePerturbationScenariosSchema>;
 export type CleIngestModule = z.infer<typeof CleIngestModuleSchema>;
 export type CleExternalAiPayload = z.infer<typeof CleExternalAiPayloadSchema>;
 
@@ -177,7 +185,8 @@ Tôi đang sử dụng hệ thống rèn luyện nhận thức **Cognitive Latti
 ### QUY TẮC BẮT BUỘC CHO CÂU TRẢ LỜI CỦA BẠN:
 1. KHÔNG viết lời chào hỏi hay giải thích dài dòng bên ngoài.
 2. Phân tích chủ đề từ nguyên lý gốc (First Principles), cơ chế nhân quả cấp độ 1 và cấp độ 2, điều kiện biên làm sai lệch mô hình (Falsifiability theo Karl Popper) và bằng chứng thực nghiệm.
-3. Trả về kết quả DUY NHẤT dưới dạng một khối mã \`json\` tuân thủ chính xác tuyệt đối cấu trúc Schema \`CLE_INGEST_V1\` dưới đây để tôi import trực tiếp vào trang web CLE (nhằm giữ kín nội dung bài đọc cho Cổng Đoán Trước 180 giây):
+3. Đối với \`perturbation_scenarios\`: Thiết kế 3 đề bài tình huống thực tế có số liệu định lượng cụ thể (\`counterfactual\`, \`interleaved_contrast\`, \`far_transfer\`). TUYỆT ĐỐI chỉ sinh đề bài thử thách nhận thức (\`front_prompt\`), KHÔNG sinh sẵn đáp án (\`back_structure\`) để người học tự tư duy giải quyết theo \`RULE-04\`.
+4. Trả về kết quả DUY NHẤT dưới dạng một khối mã \`json\` tuân thủ chính xác tuyệt đối cấu trúc Schema \`CLE_INGEST_V1\` dưới đây để tôi import trực tiếp vào trang web CLE (nhằm giữ kín nội dung bài đọc cho Cổng Đoán Trước 180 giây):
 
 \`\`\`json
 {
@@ -243,7 +252,12 @@ Tôi đang sử dụng hệ thống rèn luyện nhận thức **Cognitive Latti
           "second_order_systemic_mechanism": "Cơ chế thích ứng hệ thống cấp độ 2",
           "structural_invariant_shared": "Quy luật cấu trúc bất biến chung xuyên qua cả 3 miền"
         }
-      ]
+      ],
+      "perturbation_scenarios": {
+        "counterfactual": "Đề bài tình huống phản thực tế (Counterfactual) có số liệu định lượng: Giả định một biến số then chốt bị đảo ngược...",
+        "interleaved_contrast": "Đề bài tình huống tương phản đan xen (Interleaved Contrast) có số liệu định lượng: So sánh với một kịch bản thoạt nhìn giống nhau nhưng bản chất đối nghịch...",
+        "far_transfer": "Đề bài tình huống chuyển giao xa (Far Transfer) có số liệu định lượng: Áp dụng quy luật sang một miền hoàn toàn khác biệt..."
+      }
     }
   ]
 }

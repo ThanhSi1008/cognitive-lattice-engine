@@ -142,10 +142,11 @@ export async function PUT(request: NextRequest) {
     );
 
     if (checkTargetRes.rows.length === 0) {
+      const isSeed = parsed.target_zettel_uid.startsWith("20261019");
       await db.query(
         `INSERT INTO permanent_zettels (
-          zettel_uid, user_id, atomic_title, body_text, word_count, domain_category, state
-        ) VALUES ($1, $2, $3, $4, 120, 'System Dynamics', 'DRAFT')
+          zettel_uid, user_id, atomic_title, body_text, word_count, domain_category, state, created_at
+        ) VALUES ($1, $2, $3, $4, 120, 'System Dynamics', 'DRAFT', ${isSeed ? "NOW() - INTERVAL '30 days'" : "NOW()"})
         ON CONFLICT (zettel_uid) DO NOTHING`,
         [
           parsed.target_zettel_uid,

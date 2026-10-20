@@ -306,9 +306,9 @@ END $$;
 -- 10. Dữ Liệu Khởi Tạo Hạt Giống Nền Tảng (Seed Nodes cho Cold-Start)
 DO $$
 BEGIN
-    -- Chèn 3 Zettel hạt giống mẫu ở trạng thái DRAFT
+    -- Chèn 3 Zettel hạt giống mẫu ở trạng thái DRAFT với created_at lùi 30 ngày trước
     INSERT INTO permanent_zettels (
-        zettel_uid, user_id, atomic_title, body_text, word_count, domain_category, state
+        zettel_uid, user_id, atomic_title, body_text, word_count, domain_category, state, created_at
     ) VALUES 
         (
             '20261019000001',
@@ -317,7 +317,8 @@ BEGIN
             'Khi tỷ lệ áp lực ôn tập DRLI vượt ngưỡng tới hạn 1.5, toàn bộ luồng nạp kiến thức mới bắt buộc phải bị chặn đứng. Não bộ con người có dung lượng bộ nhớ làm việc hữu hạn. Việc tiếp tục nhồi nhét tài liệu trong tình trạng nợ thẻ FSRS trầm trọng sẽ kích hoạt ảo tưởng thông thạo và làm xói mòn cấu trúc tri thức bền vững đã xây dựng trước đó.',
             120,
             'Cognitive Science',
-            'DRAFT'
+            'DRAFT',
+            NOW() - INTERVAL '30 days'
         ),
         (
             '20261019000002',
@@ -326,7 +327,8 @@ BEGIN
             'Trong bất kỳ hệ thống thích ứng phức tạp nào, các can thiệp cục bộ luôn tạo ra phản ứng thích nghi của các tác tử khác. Sự chậm trễ của các vòng phản hồi cấp hai thường khiến người quan sát ngây thơ lầm tưởng về hiệu quả tức thời của chính sách, dẫn đến những thảm họa điều hành không thể cứu vãn khi độ trễ hệ thống bộc phát.',
             120,
             'System Architecture',
-            'DRAFT'
+            'DRAFT',
+            NOW() - INTERVAL '30 days'
         ),
         (
             '20261019000003',
@@ -335,9 +337,11 @@ BEGIN
             'Hiệu suất biểu diễn nhất thời trong lúc học hoàn toàn không đồng nghĩa với năng lực lưu giữ bền vững. Việc cố tình đưa ma sát nhận thức vào thông qua luyện tập đan xen và gợi nhớ chủ động không có tài liệu là điều kiện tiên quyết để thúc đẩy tái cấu trúc nơ-ron sâu sắc và bảo toàn tri thức xuyên suốt các chu kỳ dài hạn.',
             120,
             'Cognitive Science',
-            'DRAFT'
+            'DRAFT',
+            NOW() - INTERVAL '30 days'
         )
-    ON CONFLICT (zettel_uid) DO NOTHING;
+    ON CONFLICT (zettel_uid) DO UPDATE
+    SET created_at = NOW() - INTERVAL '30 days';
 
     -- Chèn liên kết hai chiều giữa các nút hạt giống mẫu
     INSERT INTO zettel_links (
@@ -363,9 +367,10 @@ BEGIN
         )
     ON CONFLICT (source_zettel_uid, target_zettel_uid) DO NOTHING;
 
-    -- Nâng cấp các nút hạt giống lên PUBLISHED
+    -- Nâng cấp các nút hạt giống lên PUBLISHED và đảm bảo created_at lùi 30 ngày trước để bảo vệ Atomic Zettel Velocity
     UPDATE permanent_zettels
-    SET state = 'PUBLISHED'
+    SET state = 'PUBLISHED',
+        created_at = NOW() - INTERVAL '30 days'
     WHERE zettel_uid IN ('20261019000001', '20261019000002', '20261019000003');
 END $$;
 

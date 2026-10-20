@@ -164,6 +164,12 @@ export function MorningSession({
       analogicalMatrixScaffold: module.analogical_matrix_scaffold,
     });
 
+    if (module.perturbation_scenarios) {
+      try {
+        localStorage.setItem("cle_last_studied_scenarios", JSON.stringify(module.perturbation_scenarios));
+      } catch {}
+    }
+
     setStep("GATE_1_1");
   };
 

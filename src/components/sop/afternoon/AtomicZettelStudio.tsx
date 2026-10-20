@@ -61,6 +61,22 @@ export function AtomicZettelStudio({
   const [links, setLinks] = useState<ZettelLinkItem[]>([]);
   const [cards, setCards] = useState<PerturbationCardItem[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [hasFrontierScenarios, setHasFrontierScenarios] = useState(false);
+
+  // Kiểm tra kịch bản nhiễu loạn từ Gemini 4 Argon trong localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("cle_last_studied_scenarios");
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed?.counterfactual) {
+            setHasFrontierScenarios(true);
+          }
+        }
+      } catch {}
+    }
+  }, []);
 
   // Đồng bộ domain từ literatureNote hoặc localStorage khi tải phiên chiều
   useEffect(() => {
@@ -152,23 +168,48 @@ export function AtomicZettelStudio({
   };
 
   const handleApplyScenariosToCards = () => {
-    if (!socraticResult?.scenarios) return;
-    const { counterfactual, interleavedContrast, farTransfer } = socraticResult.scenarios;
+    let frontierScenarios: any = null;
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("cle_last_studied_scenarios");
+        if (stored) frontierScenarios = JSON.parse(stored);
+      } catch {}
+    }
+
+    const titlePrefix = atomicTitle.trim() || "Nguyên lý này";
+
+    const counterfactual =
+      frontierScenarios?.counterfactual ||
+      socraticResult?.scenarios?.counterfactual ||
+      `Nếu các giả định tiên đề của "${titlePrefix}" bị đảo ngược hoàn toàn trong thực tế, cơ chế nào sẽ sụp đổ trước tiên?`;
+
+    const interleavedContrast =
+      frontierScenarios?.interleaved_contrast ||
+      frontierScenarios?.interleavedContrast ||
+      socraticResult?.scenarios?.interleavedContrast ||
+      `So sánh "${titlePrefix}" với một mô hình đối lập thoạt nhìn tương đồng: Đâu là điểm khác biệt nhân quả cấp độ hai?`;
+
+    const farTransfer =
+      frontierScenarios?.far_transfer ||
+      frontierScenarios?.farTransfer ||
+      socraticResult?.scenarios?.farTransfer ||
+      `Chuyển giao quy luật "${titlePrefix}" sang một lĩnh vực hoàn toàn xa lạ: Cấu trúc bất biến nào được bảo toàn?`;
+
     setCards([
       {
         card_type: "COUNTERFACTUAL",
         front_prompt: counterfactual,
-        back_structure: `[Cơ chế phản thực tế cho: ${atomicTitle}]`,
+        back_structure: "",
       },
       {
         card_type: "INTERLEAVED_CONTRAST",
         front_prompt: interleavedContrast,
-        back_structure: `[Điểm tương phản then chốt giữa hai mô hình]`,
+        back_structure: "",
       },
       {
         card_type: "FAR_TRANSFER",
         front_prompt: farTransfer,
-        back_structure: `[Nguyên lý ánh xạ chuyển giao xa sang miền mới]`,
+        back_structure: "",
       },
     ]);
   };
@@ -573,6 +614,25 @@ export function AtomicZettelStudio({
             existingZettels={existingZettels}
             onChange={setLinks}
           />
+
+          {/* Nút Nạp Kịch Bản Nhiễu Loạn Từ Gemini 4 Argon / Socratic */}
+          {cards.length === 0 && (hasFrontierScenarios || socraticResult?.scenarios) && (
+            <div className="bg-purple-950/40 border border-purple-800 p-4 rounded-xl flex items-center justify-between gap-3">
+              <div className="text-xs text-purple-200">
+                <span className="font-bold text-purple-300">💡 Có sẵn 3 Tình Huống Nhiễu Loạn Định Lượng</span>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Được đồng bộ từ Gemini 4 Argon / Socratic Mentor để nạp vào mặt trước thẻ FSRS (Mục 2.2 Phút 18–20).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleApplyScenariosToCards}
+                className="px-3.5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-lg shadow-md shadow-purple-500/20 transition cursor-pointer shrink-0"
+              >
+                🚀 Nạp Vào Studio Thẻ FSRS
+              </button>
+            </div>
+          )}
 
           {/* Phút 18-20: Perturbation Card Studio */}
           <PerturbationCardStudio
