@@ -10,6 +10,7 @@ import { Edit3, Layers, BookCheck, CheckCircle2 } from "lucide-react";
 
 interface EveningSessionProps {
   userId?: string;
+  sessionId?: string;
   daytimeZettelTitle?: string;
   daytimeZettelBody?: string;
   onCompleteEveningSession?: () => void;
@@ -17,6 +18,7 @@ interface EveningSessionProps {
 
 export function EveningSession({
   userId = "00000000-0000-0000-0000-000000000001",
+  sessionId,
   daytimeZettelTitle,
   daytimeZettelBody,
   onCompleteEveningSession,
@@ -69,7 +71,20 @@ export function EveningSession({
     return await res.json();
   };
 
-  const handleDecisionCommitted = () => {
+  const handleDecisionCommitted = async () => {
+    try {
+      await fetch("/api/sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          userId,
+          s3_completed_at: new Date().toISOString(),
+        }),
+      });
+    } catch (e) {
+      console.error("Lỗi cập nhật s3_completed_at:", e);
+    }
     setSubStep("ALL_COMPLETED");
     if (onCompleteEveningSession) onCompleteEveningSession();
   };
@@ -120,8 +135,20 @@ export function EveningSession({
         <BlankPageRecallCanvas
           daytimeZettelTitle={daytimeZettelTitle}
           daytimeZettelBody={daytimeZettelBody}
-          onRecallCommitted={() => {
-            // Sau khi commit recall, cho phép chuyển sang hàng đợi FSRS
+          onRecallCommitted={async (recallData) => {
+            try {
+              await fetch("/api/sessions", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  sessionId,
+                  userId,
+                  s3_blank_recall_data: recallData,
+                }),
+              });
+            } catch (e) {
+              console.error("Lỗi lưu s3_blank_recall_data:", e);
+            }
           }}
         />
       )}

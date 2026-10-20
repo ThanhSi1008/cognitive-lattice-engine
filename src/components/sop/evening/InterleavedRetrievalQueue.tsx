@@ -26,6 +26,8 @@ export function InterleavedRetrievalQueue({
   const [isTimerActive, setIsTimerActive] = useState(true);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [recallEvaluation, setRecallEvaluation] = useState<RecallEvaluationResult | null>(null);
+  const [isRefactoringLeech, setIsRefactoringLeech] = useState(false);
+  const [refactorSuccessMsg, setRefactorSuccessMsg] = useState<string | null>(null);
 
   const currentCard = queue[currentIndex] || null;
 
@@ -111,6 +113,43 @@ export function InterleavedRetrievalQueue({
       }
     } catch (err: any) {
       alert("Lỗi ghi nhận kết quả: " + err.message);
+    }
+  };
+
+  const handleApplyLeechRefactoring = async () => {
+    if (!recallEvaluation?.leechDecomposition || isRefactoringLeech) return;
+    setIsRefactoringLeech(true);
+    try {
+      const res = await fetch("/api/cards/refactor-leech", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cardId: currentCard.id,
+          atomicCards: recallEvaluation.leechDecomposition.atomicCards.map((ac) => ({
+            front_prompt: ac.frontScenario,
+            back_structure: ac.targetConcept,
+          })),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Lỗi phẫu thuật thẻ đỉa");
+      }
+
+      const data = await res.json();
+      setRefactorSuccessMsg(data.message || "Đã phân rã thẻ thành công!");
+      setTimeout(() => {
+        if (currentIndex + 1 < queue.length) {
+          setCurrentIndex((prev) => prev + 1);
+        } else {
+          onQueueFinished();
+        }
+      }, 1500);
+    } catch (err: any) {
+      alert("Lỗi: " + err.message);
+    } finally {
+      setIsRefactoringLeech(false);
     }
   };
 
@@ -267,19 +306,38 @@ export function InterleavedRetrievalQueue({
 
                   {/* Leech Decomposition Suggestion */}
                   {recallEvaluation.leechDecomposition && (
-                    <div className="bg-rose-950/40 border border-rose-900/60 p-3 rounded-lg flex flex-col gap-2 mt-1">
-                      <div className="flex items-center gap-1.5 font-bold text-rose-300 text-xs">
-                        <Scissors className="w-3.5 h-3.5 text-rose-400" />
-                        <span>Socratic Leech Decomposer: Gợi Ý Bẻ Nhỏ Thẻ Đỉa</span>
+                    <div className="bg-rose-950/40 border border-rose-900/60 p-3.5 rounded-lg flex flex-col gap-2.5 mt-1">
+                      <div className="flex items-center justify-between font-bold text-rose-300 text-xs">
+                        <span className="flex items-center gap-1.5">
+                          <Scissors className="w-3.5 h-3.5 text-rose-400" />
+                          <span>Socratic Leech Decomposer: Gợi Ý Bẻ Nhỏ Thẻ Đỉa</span>
+                        </span>
+                        {refactorSuccessMsg ? (
+                          <span className="text-emerald-400 font-mono text-[11px] font-normal">
+                            ✓ {refactorSuccessMsg}
+                          </span>
+                        ) : null}
                       </div>
                       <p className="text-[11px] text-slate-300">{recallEvaluation.leechDecomposition.reason}</p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1">
                         {recallEvaluation.leechDecomposition.atomicCards.map((ac, idx) => (
-                          <div key={idx} className="bg-slate-900/80 p-2 rounded border border-slate-800 text-[11px]">
+                          <div key={idx} className="bg-slate-900/80 p-2.5 rounded border border-slate-800 text-[11px]">
                             <div className="text-rose-400 font-semibold">{ac.frontScenario}</div>
-                            <div className="text-slate-400 mt-0.5">{ac.targetConcept}</div>
+                            <div className="text-slate-400 mt-1">{ac.targetConcept}</div>
                           </div>
                         ))}
+                      </div>
+
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={handleApplyLeechRefactoring}
+                          disabled={isRefactoringLeech}
+                          className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg shadow-rose-600/30"
+                        >
+                          <Scissors className="w-4 h-4" />
+                          {isRefactoringLeech ? "Đang phẫu thuật thẻ..." : "Áp Dụng Tách Thẻ Nguyên Tử & Giải Phóng Quarantine"}
+                        </button>
                       </div>
                     </div>
                   )}

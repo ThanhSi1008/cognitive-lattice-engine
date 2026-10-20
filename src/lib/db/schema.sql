@@ -154,7 +154,7 @@ RETURNS TRIGGER AS $$
 DECLARE
     link_count INT;
 BEGIN
-    IF NEW.state = 'PUBLISHED' AND (OLD.state IS NULL OR OLD.state <> 'PUBLISHED') THEN
+    IF NEW.state = 'PUBLISHED' AND (TG_OP = 'INSERT' OR OLD.state IS NULL OR OLD.state <> 'PUBLISHED') THEN
         SELECT COUNT(*) INTO link_count
         FROM zettel_links
         WHERE source_zettel_uid = NEW.zettel_uid OR target_zettel_uid = NEW.zettel_uid;
@@ -169,7 +169,7 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_enforce_zettel_links ON permanent_zettels;
 CREATE TRIGGER trg_enforce_zettel_links
-BEFORE UPDATE ON permanent_zettels
+BEFORE INSERT OR UPDATE ON permanent_zettels
 FOR EACH ROW EXECUTE FUNCTION enforce_min_zettel_links_on_publish();
 
 -- 6. Bảng Thẻ Truy xuất FSRS (fsrs_cards)

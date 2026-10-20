@@ -124,7 +124,7 @@ export function AtomicZettelStudio({
     if (!canPublish || isPublishing) return;
     setIsPublishing(true);
     try {
-      // 1. Tạo Permanent Zettel
+      // 1. Tạo Permanent Zettel ở trạng thái DRAFT
       const zettelPayload = {
         zettel_uid: zettelUid,
         user_id: userId,
@@ -133,7 +133,7 @@ export function AtomicZettelStudio({
         word_count: wordCount,
         domain_category: domainCategory.trim(),
         literature_note_id: literatureNote?.id || null,
-        state: "PUBLISHED",
+        state: "DRAFT",
       };
 
       const zettelRes = await fetch("/api/zettels", {
@@ -144,19 +144,38 @@ export function AtomicZettelStudio({
 
       if (!zettelRes.ok) {
         const err = await zettelRes.json();
-        throw new Error(err.error || "Lỗi xuất bản Zettel");
+        throw new Error(err.error || "Lỗi lưu Zettel nháp");
       }
 
-      // 2. Lưu các liên kết hai chiều vào zettel_links
+      // 2. Lưu tối thiểu 2 liên kết hai chiều vào zettel_links
       for (const link of links) {
-        await fetch("/api/zettels", {
+        const linkRes = await fetch("/api/zettels", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(link),
         });
+        if (!linkRes.ok) {
+          const err = await linkRes.json();
+          throw new Error(err.error || "Lỗi lưu liên kết hai chiều");
+        }
       }
 
-      // 3. Tạo các thẻ FSRS
+      // 3. Chuyển trạng thái sang PUBLISHED (Trigger trg_enforce_zettel_links kiểm tra >= 2 links)
+      const publishRes = await fetch("/api/zettels", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          zettel_uid: zettelUid,
+          state: "PUBLISHED",
+        }),
+      });
+
+      if (!publishRes.ok) {
+        const err = await publishRes.json();
+        throw new Error(err.error || "Lỗi chuyển Zettel sang trạng thái PUBLISHED");
+      }
+
+      // 4. Tạo các thẻ FSRS
       for (const card of cards) {
         await fetch("/api/cards", {
           method: "POST",

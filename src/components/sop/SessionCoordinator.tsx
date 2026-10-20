@@ -24,6 +24,9 @@ export function SessionCoordinator() {
   const [session, setSession] = useState<any | null>(null);
   const [governor, setGovernor] = useState<CapacityGovernorResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [latestDaytimeZettel, setLatestDaytimeZettel] = useState<{ title: string; body: string } | null>(null);
+  const [quarantinedCards, setQuarantinedCards] = useState<any[]>([]);
+  const [isSplittingCardId, setIsSplittingCardId] = useState<string | null>(null);
 
   const loadSession = async () => {
     try {
@@ -37,6 +40,29 @@ export function SessionCoordinator() {
         if (data.governor?.isCircuitBreakerTripped) {
           setActiveTab("REFACTORING");
         }
+      }
+
+      // Tải Zettel mới nhất của phiên chiều để truyền cho phiên tối
+      const zettelRes = await fetch(`/api/zettels?userId=${userId}`);
+      if (zettelRes.ok) {
+        const zData = await zettelRes.json();
+        if (zData.zettels && zData.zettels.length > 0) {
+          const latest = zData.zettels[0];
+          setLatestDaytimeZettel({
+            title: latest.atomic_title,
+            body: latest.body_text,
+          });
+        }
+      }
+
+      // Tải danh sách thẻ đỉa đang bị cách ly
+      const cardsRes = await fetch(`/api/cards?userId=${userId}&dueOnly=false`);
+      if (cardsRes.ok) {
+        const cData = await cardsRes.json();
+        const leeches = (cData.orderedQueue || []).filter(
+          (c: any) => c.state === "LEECH_QUARANTINE" || c.difficulty >= 8.5 || c.is_leech
+        );
+        setQuarantinedCards(leeches);
       }
     } catch (err) {
       console.error("Lỗi tải thông tin phiên:", err);
@@ -224,6 +250,9 @@ export function SessionCoordinator() {
       {activeTab === "EVENING" && (
         <EveningSession
           userId={userId}
+          sessionId={session?.id}
+          daytimeZettelTitle={latestDaytimeZettel?.title}
+          daytimeZettelBody={latestDaytimeZettel?.body}
           onCompleteEveningSession={() => {
             // Hoàn tất chu kỳ ngày
             loadSession();
@@ -254,7 +283,7 @@ export function SessionCoordinator() {
               </div>
               <button
                 onClick={() => setActiveTab("EVENING")}
-                className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold rounded text-xs transition"
+                className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-semibold rounded text-xs transition cursor-pointer"
               >
                 Vào Hàng Đợi Ôn Tập Ngay
               </button>
@@ -270,11 +299,88 @@ export function SessionCoordinator() {
               </div>
               <button
                 onClick={() => setActiveTab("MIDDAY")}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded text-xs transition"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded text-xs transition cursor-pointer"
               >
                 Vào Hộp Đệm Fleeting Notes
               </button>
             </div>
+          </div>
+
+          {/* Trạm Phẫu Thuật Thẻ Đỉa Trực Tiếp (Leech Rehabilitation Studio) */}
+          <div className="bg-slate-950 p-5 rounded-xl border border-rose-900/40 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-mono text-rose-400 font-semibold uppercase block">
+                  Trạm Cách Ly & Phẫu Thuật Thẻ Đỉa (Leech Quarantine Rehabilitation)
+                </span>
+                <h3 className="text-sm font-bold text-white mt-0.5">
+                  Các thẻ bị quên nhiều lần (lapses &ge; 3 hoặc difficulty &ge; 8.5)
+                </h3>
+              </div>
+              <span className="text-xs font-mono px-2.5 py-1 rounded bg-rose-950 text-rose-400 border border-rose-800">
+                {quarantinedCards.length} thẻ đang cách ly
+              </span>
+            </div>
+
+            {quarantinedCards.length > 0 ? (
+              <div className="grid grid-cols-1 gap-3">
+                {quarantinedCards.map((card) => (
+                  <div
+                    key={card.id}
+                    className="p-3.5 bg-slate-900/80 border border-slate-800 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-3 text-xs"
+                  >
+                    <div className="flex flex-col gap-1 max-w-xl">
+                      <div className="font-semibold text-slate-200">{card.front_prompt}</div>
+                      <div className="text-[11px] text-slate-400 italic">Đáp án: {card.back_structure}</div>
+                      <div className="text-[10px] font-mono text-rose-400">
+                        Lapses: {card.lapses || 3} • Độ khó: {card.difficulty || 8.5} • Mô hình: [[{card.zettel_uid}]]
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isSplittingCardId === card.id}
+                      onClick={async () => {
+                        setIsSplittingCardId(card.id);
+                        try {
+                          const res = await fetch("/api/cards/refactor-leech", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              cardId: card.id,
+                              atomicCards: [
+                                {
+                                  front_prompt: `[Nguyên tử 1: Tiền đề kích hoạt] Tiền đề then chốt của cơ chế trong ${card.zettel_uid} là gì?`,
+                                  back_structure: `Tiền đề điều kiện tiên quyết của mô hình.`,
+                                },
+                                {
+                                  front_prompt: `[Nguyên tử 2: Chuỗi nhân quả] Cơ chế chuyển hóa dẫn đến kết quả trong ${card.zettel_uid} là gì?`,
+                                  back_structure: `Chuỗi mắt xích nhân quả trung gian.`,
+                                },
+                              ],
+                            }),
+                          });
+                          if (res.ok) {
+                            await loadSession();
+                          }
+                        } catch (e) {
+                          console.error("Lỗi phẫu thuật thẻ đỉa:", e);
+                        } finally {
+                          setIsSplittingCardId(null);
+                        }
+                      }}
+                      className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition shrink-0 cursor-pointer shadow"
+                    >
+                      {isSplittingCardId === card.id ? "Đang bẻ nhỏ..." : "Phân Rã 2 Thẻ Con & Mở Khóa"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs text-slate-500 italic p-4 text-center border border-dashed border-slate-800 rounded-lg">
+                ✓ Tuyệt vời! Hiện tại không có thẻ nào rơi vào diện cách ly Leech Quarantine.
+              </div>
+            )}
           </div>
         </div>
       )}

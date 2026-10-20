@@ -163,3 +163,47 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 }
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const db = await getDb();
+    const body = await request.json();
+    const { zettel_uid, state, atomic_title, body_text } = body;
+
+    if (!zettel_uid) {
+      return NextResponse.json({ error: "Thiếu zettel_uid để cập nhật." }, { status: 400 });
+    }
+
+    const updates: string[] = [];
+    const values: any[] = [zettel_uid];
+    let idx = 2;
+
+    if (state) {
+      updates.push(`state = $${idx++}`);
+      values.push(state);
+    }
+    if (atomic_title) {
+      updates.push(`atomic_title = $${idx++}`);
+      values.push(atomic_title);
+    }
+    if (body_text) {
+      updates.push(`body_text = $${idx++}`);
+      values.push(body_text);
+    }
+
+    if (updates.length === 0) {
+      return NextResponse.json({ error: "Không có trường nào được cung cấp để cập nhật." }, { status: 400 });
+    }
+
+    const sql = `UPDATE permanent_zettels SET ${updates.join(", ")} WHERE zettel_uid = $1 RETURNING *`;
+    const res = await db.query(sql, values);
+
+    if (res.rows.length === 0) {
+      return NextResponse.json({ error: "Không tìm thấy Zettel với UID đã cho." }, { status: 404 });
+    }
+
+    return NextResponse.json({ zettel: res.rows[0] });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+}

@@ -81,32 +81,50 @@ export async function PATCH(request: NextRequest) {
   try {
     const db = await getDb();
     const body = await request.json();
-    const { id, s1_hypothesis_text, s1_completed_at, s2_completed_at, s3_blank_recall_data, s3_completed_at } = body;
+    let { id, userId, sessionId, s1_hypothesis_text, s1_completed_at, s2_completed_at, s3_blank_recall_data, s3_completed_at } = body;
 
-    if (!id) {
-      return NextResponse.json({ error: "Missing session id" }, { status: 400 });
+    const targetId = id || sessionId;
+
+    let targetSessionId = targetId;
+    if (!targetSessionId && userId) {
+      const todayRes = await db.query(
+        `SELECT id FROM learning_sessions WHERE user_id = $1 AND date = CURRENT_DATE ORDER BY created_at DESC LIMIT 1`,
+        [userId]
+      );
+      if (todayRes.rows.length > 0) {
+        targetSessionId = todayRes.rows[0].id;
+      }
     }
 
-    // Lấy thông tin hiện tại để kiểm tra incubation lock
+    if (!targetSessionId) {
+      return NextResponse.json({ error: "Missing session id or userId" }, { status: 400 });
+    }
+
+    // Lấy thông tin hiện tại để kiểm tra
     const currentSessionRes = await db.query(
       `SELECT * FROM learning_sessions WHERE id = $1`,
-      [id]
+      [targetSessionId]
     );
     if (currentSessionRes.rows.length === 0) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    const current = currentSessionRes.rows[0];
+    // Cập nhật s1_hypothesis_text độc lập
+    if (s1_hypothesis_text !== undefined) {
+      await db.query(
+        `UPDATE learning_sessions SET s1_hypothesis_text = $1 WHERE id = $2`,
+        [s1_hypothesis_text, targetSessionId]
+      );
+    }
 
     // Cập nhật s1_completed_at
     if (s1_completed_at !== undefined) {
       const s1Time = s1_completed_at ? new Date(s1_completed_at) : null;
       await db.query(
         `UPDATE learning_sessions 
-         SET s1_hypothesis_text = COALESCE($1, s1_hypothesis_text),
-             s1_completed_at = $2
-         WHERE id = $3`,
-        [s1_hypothesis_text, s1Time, id]
+         SET s1_completed_at = $1
+         WHERE id = $2`,
+        [s1Time, targetSessionId]
       );
     }
 
@@ -117,7 +135,7 @@ export async function PATCH(request: NextRequest) {
         `UPDATE learning_sessions 
          SET s2_completed_at = $1
          WHERE id = $2`,
-        [s2Time, id]
+        [s2Time, targetSessionId]
       );
     }
 
@@ -129,11 +147,11 @@ export async function PATCH(request: NextRequest) {
          SET s3_blank_recall_data = COALESCE($1, s3_blank_recall_data),
              s3_completed_at = COALESCE($2, s3_completed_at)
          WHERE id = $3`,
-        [s3_blank_recall_data ? JSON.stringify(s3_blank_recall_data) : null, s3Time, id]
+        [s3_blank_recall_data ? JSON.stringify(s3_blank_recall_data) : null, s3Time, targetSessionId]
       );
     }
 
-    const updated = await db.query(`SELECT * FROM learning_sessions WHERE id = $1`, [id]);
+    const updated = await db.query(`SELECT * FROM learning_sessions WHERE id = $1`, [targetSessionId]);
     return NextResponse.json({ session: updated.rows[0] });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 400 });

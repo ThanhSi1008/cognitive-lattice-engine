@@ -79,6 +79,63 @@ export function DecisionJournalWidget({
   const [redflagsResult, setRedflagsResult] = useState<DecisionRedflagsResult | null>(null);
   const [isScanningRedflags, setIsScanningRedflags] = useState(false);
 
+  // Outcome Audit State (+30 / +60 / +90 Days)
+  const [lockedDecisions, setLockedDecisions] = useState<any[]>([]);
+  const [selectedAuditDecision, setSelectedAuditDecision] = useState<any | null>(null);
+  const [auditMilestone, setAuditMilestone] = useState<"30d" | "60d" | "90d">("30d");
+  const [actualOutcome, setActualOutcome] = useState<"POSITIVE" | "NEUTRAL" | "WORST">("POSITIVE");
+  const [auditNotes, setAuditNotes] = useState("");
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [auditFeedback, setAuditFeedback] = useState<any | null>(null);
+
+  const loadDecisions = async () => {
+    try {
+      const res = await fetch(`/api/decisions?userId=${userId}`);
+      if (res.ok) {
+        const data = await res.json();
+        const locked = (data.decisions || []).filter((d: any) => d.is_locked);
+        setLockedDecisions(locked);
+      }
+    } catch (e) {
+      console.error("Lỗi tải danh sách quyết định:", e);
+    }
+  };
+
+  React.useEffect(() => {
+    loadDecisions();
+  }, [userId]);
+
+  const handleAuditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAuditDecision || isAuditing) return;
+    setIsAuditing(true);
+    try {
+      const res = await fetch("/api/decisions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: selectedAuditDecision.id,
+          milestone: auditMilestone,
+          outcome: actualOutcome,
+          reviewNotes: auditNotes.trim() || "Hậu kiểm kết quả thực tế.",
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Lỗi cập nhật hậu kiểm");
+      }
+
+      const data = await res.json();
+      setAuditFeedback(data.brierResult);
+      await loadDecisions();
+    } catch (err: any) {
+      alert("Lỗi: " + err.message);
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
   const probSum = probPos + probNeu + probWorst;
   const isProbSumValid = probSum === 100;
 
@@ -418,6 +475,141 @@ export function DecisionJournalWidget({
         <Lock className="w-4 h-4" />
         {isSubmitting ? "Đang khóa..." : "Khóa Quyết Định Bất Biến & Lập Lịch Hậu Kiểm 30-60-90 Ngày"}
       </button>
+
+      {/* 6. Bảng Kiểm Toán Hậu Nghiệm Quyết Định (+30 / +60 / +90 Ngày & Brier Score) */}
+      <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 flex flex-col gap-4 mt-2">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div>
+            <span className="text-xs font-mono text-cyan-400 font-semibold uppercase block">
+              HẬU KIỂM KẾT QUẢ THỰC TẾ (+30 / +60 / +90 NGÀY)
+            </span>
+            <h3 className="text-sm font-bold text-white mt-0.5">
+              Đo Lường Điểm Brier Đa Lớp & Hiệu Chuẩn Nhận Thức
+            </h3>
+          </div>
+          <span className="text-xs font-mono px-2.5 py-1 rounded bg-slate-900 text-slate-300 border border-slate-800">
+            {lockedDecisions.length} quyết định đã khóa
+          </span>
+        </div>
+
+        {lockedDecisions.length > 0 ? (
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {lockedDecisions.map((dec) => (
+                <div
+                  key={dec.id}
+                  onClick={() => {
+                    setSelectedAuditDecision(dec);
+                    setAuditFeedback(null);
+                  }}
+                  className={`p-3.5 rounded-lg border cursor-pointer transition flex flex-col gap-1.5 ${
+                    selectedAuditDecision?.id === dec.id
+                      ? "bg-slate-900 border-cyan-500 ring-1 ring-cyan-500/50"
+                      : "bg-slate-900/40 border-slate-800 hover:border-slate-700"
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <span className="font-bold text-white text-xs line-clamp-1">{dec.primary_thesis}</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 shrink-0">
+                      Đã khóa
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 line-clamp-2">{dec.problem_frame}</p>
+                  <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 pt-1 border-t border-slate-800/60">
+                    <span>Dự báo: {dec.prob_positive}% / {dec.prob_neutral}% / {dec.prob_worst}%</span>
+                    {dec.brier_score !== null && dec.brier_score !== undefined ? (
+                      <span className="text-cyan-400 font-bold">BS: {dec.brier_score.toFixed(3)}</span>
+                    ) : (
+                      <span className="text-amber-400">Chờ hậu kiểm</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Audit Form for Selected Decision */}
+            {selectedAuditDecision && (
+              <form onSubmit={handleAuditSubmit} className="bg-slate-900/80 border border-cyan-900/50 rounded-xl p-4 flex flex-col gap-3 mt-2 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-cyan-300">
+                    Hậu kiểm cho: &ldquo;{selectedAuditDecision.primary_thesis}&rdquo;
+                  </span>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    Xác suất gán ban đầu: Pos {selectedAuditDecision.prob_positive}% / Neu {selectedAuditDecision.prob_neutral}% / Worst {selectedAuditDecision.prob_worst}%
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <label className="text-slate-400 font-medium">Mốc thời gian hậu kiểm:</label>
+                    <select
+                      value={auditMilestone}
+                      onChange={(e) => setAuditMilestone(e.target.value as any)}
+                      className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-slate-200"
+                    >
+                      <option value="30d">Mốc +30 ngày</option>
+                      <option value="60d">Mốc +60 ngày</option>
+                      <option value="90d">Mốc +90 ngày</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-slate-400 font-medium">Kịch bản thực tế đã xảy ra:</label>
+                    <select
+                      value={actualOutcome}
+                      onChange={(e) => setActualOutcome(e.target.value as any)}
+                      className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-slate-200"
+                    >
+                      <option value="POSITIVE">Kịch bản Tích cực (Positive Outcome)</option>
+                      <option value="NEUTRAL">Kịch bản Trung tính (Neutral Outcome)</option>
+                      <option value="WORST">Kịch bản Xấu nhất (Worst Outcome)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-slate-400 font-medium">Ghi chú đối chiếu & Bài học rút ra:</label>
+                  <textarea
+                    rows={2}
+                    value={auditNotes}
+                    onChange={(e) => setAuditNotes(e.target.value)}
+                    placeholder="Mô tả diễn biến thực tế so với giả định ban đầu..."
+                    className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-xs text-slate-200"
+                  />
+                </div>
+
+                <div className="flex justify-between items-center pt-1">
+                  <div className="text-[11px] text-slate-400">
+                    Công thức Brier Score đa lớp: \(BS = \sum (p_k - o_k)^2 \in [0, 2]\)
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isAuditing}
+                    className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg text-xs transition cursor-pointer shadow"
+                  >
+                    {isAuditing ? "Đang tính điểm..." : "Ghi Nhận & Tính Brier Score Thời Gian Thực"}
+                  </button>
+                </div>
+
+                {auditFeedback && (
+                  <div className="bg-slate-950 p-3 rounded-lg border border-cyan-800/80 flex items-center justify-between text-xs mt-1">
+                    <span className="font-mono text-cyan-300">
+                      Điểm Brier Đã Cập Nhật: <strong>{auditFeedback.brierScore.toFixed(4)}</strong>
+                    </span>
+                    <span className="font-mono text-emerald-400 bg-emerald-950/80 px-2.5 py-0.5 rounded border border-emerald-800">
+                      Xếp loại: {auditFeedback.calibrationRating}
+                    </span>
+                  </div>
+                )}
+              </form>
+            )}
+          </div>
+        ) : (
+          <div className="text-xs text-slate-500 italic p-3 text-center border border-dashed border-slate-800 rounded-lg">
+            Chưa có quyết định nào bị khóa. Hãy tạo quyết định mới ở khung phía trên và bấm Khóa Quyết Định Bất Biến.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
