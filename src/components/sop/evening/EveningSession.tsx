@@ -6,7 +6,7 @@ import { InterleavedRetrievalQueue } from "./InterleavedRetrievalQueue";
 import { DecisionJournalWidget } from "./DecisionJournalWidget";
 import { InterleavingCardItem } from "@/lib/algorithms/interleaving";
 import { Grade } from "ts-fsrs";
-import { Edit3, Layers, BookCheck, CheckCircle2 } from "lucide-react";
+import { Edit3, Layers, BookCheck, CheckCircle2, RefreshCw } from "lucide-react";
 
 interface EveningSessionProps {
   userId?: string;
@@ -14,6 +14,8 @@ interface EveningSessionProps {
   daytimeZettelTitle?: string;
   daytimeZettelBody?: string;
   onCompleteEveningSession?: () => void;
+  onResetCycle?: () => void;
+  isResetting?: boolean;
 }
 
 export function EveningSession({
@@ -22,6 +24,8 @@ export function EveningSession({
   daytimeZettelTitle,
   daytimeZettelBody,
   onCompleteEveningSession,
+  onResetCycle,
+  isResetting,
 }: EveningSessionProps) {
   const [subStep, setSubStep] = useState<"RECALL_4_1" | "RETRIEVAL_4_2" | "DECISION_4_3" | "ALL_COMPLETED">("RECALL_4_1");
   const [queue, setQueue] = useState<InterleavingCardItem[]>([]);
@@ -180,6 +184,17 @@ export function EveningSession({
           <p className="text-sm text-slate-300 max-w-lg">
             95% tri thức đã được bảo toàn qua truy xuất đan xen. Nhật ký quyết định đã được khóa an toàn và hẹn giờ kiểm toán tại mốc +30 ngày.
           </p>
+          {onResetCycle && (
+            <button
+              type="button"
+              onClick={onResetCycle}
+              disabled={isResetting}
+              className="mt-2 px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition flex items-center gap-2 cursor-pointer shadow-lg hover:shadow-emerald-500/25 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isResetting ? "animate-spin" : ""}`} />
+              <span>🔄 Khởi Tạo Chu Kỳ Luyện Tập Mới / Học Tiếp Bài Tiếp Theo</span>
+            </button>
+          )}
         </div>
       )}
     </div>

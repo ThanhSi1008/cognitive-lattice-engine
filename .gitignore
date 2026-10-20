@@ -26,6 +26,7 @@ yarn-error.log*
 .env*.local
 .env
 /.pgdata
+.cle-pglite-data/
 
 # typescript
 *.tsbuildinfo

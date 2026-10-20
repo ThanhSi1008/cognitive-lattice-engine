@@ -84,31 +84,35 @@ class PGliteClient implements DatabaseClient {
   }
 }
 
-let dbInstance: DatabaseClient | null = null;
-let isMigrated = false;
+const globalForDb = globalThis as unknown as {
+  __cleDbInstance?: DatabaseClient | null;
+  __cleMigrationPromise?: Promise<void> | null;
+};
 
 async function ensureMigrated(client: DatabaseClient): Promise<void> {
-  if (isMigrated) return;
-  try {
-    const check = await client.query<{ count: string }>(
-      "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'learning_sessions'"
-    );
-    const count = parseInt(check.rows[0]?.count || "0", 10);
-    if (count === 0) {
+  if (globalForDb.__cleMigrationPromise) {
+    return globalForDb.__cleMigrationPromise;
+  }
+
+  globalForDb.__cleMigrationPromise = (async () => {
+    try {
       console.log("[DB] Tự động khởi tạo cấu trúc bảng từ schema.sql...");
       await runMigrations(client);
       console.log("[DB] Khởi tạo cấu trúc bảng thành công.");
+    } catch (err) {
+      console.error("[DB] Lỗi kiểm tra / khởi tạo migrations:", err);
+      globalForDb.__cleMigrationPromise = null;
+      throw err;
     }
-    isMigrated = true;
-  } catch (err) {
-    console.error("[DB] Lỗi kiểm tra / khởi tạo migrations:", err);
-  }
+  })();
+
+  return globalForDb.__cleMigrationPromise;
 }
 
 export async function getDb(): Promise<DatabaseClient> {
-  if (dbInstance) {
-    await ensureMigrated(dbInstance);
-    return dbInstance;
+  if (globalForDb.__cleDbInstance) {
+    await ensureMigrated(globalForDb.__cleDbInstance);
+    return globalForDb.__cleDbInstance;
   }
 
   const usePGlite = process.env.USE_PGLITE === "true" || !process.env.DATABASE_URL;
@@ -118,15 +122,15 @@ export async function getDb(): Promise<DatabaseClient> {
     const dataDir =
       process.env.NODE_ENV === "test"
         ? undefined
-        : process.env.PGLITE_DATA_DIR || undefined;
+        : process.env.PGLITE_DATA_DIR || path.resolve(process.cwd(), ".cle-pglite-data");
     const client = new PGliteClient(dataDir);
-    dbInstance = client;
+    globalForDb.__cleDbInstance = client;
     await ensureMigrated(client);
     return client;
   }
 
   const client = new PostgresClient(process.env.DATABASE_URL!);
-  dbInstance = client;
+  globalForDb.__cleDbInstance = client;
   await ensureMigrated(client);
   return client;
 }
@@ -138,9 +142,9 @@ export async function runMigrations(client: DatabaseClient): Promise<void> {
 }
 
 export async function closeDb(): Promise<void> {
-  if (dbInstance) {
-    await dbInstance.close();
-    dbInstance = null;
-    isMigrated = false;
+  if (globalForDb.__cleDbInstance) {
+    await globalForDb.__cleDbInstance.close();
+    globalForDb.__cleDbInstance = null;
+    globalForDb.__cleMigrationPromise = null;
   }
 }

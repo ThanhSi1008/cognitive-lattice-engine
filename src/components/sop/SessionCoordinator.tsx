@@ -16,6 +16,7 @@ import {
   Activity,
   Layers,
   CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 
 interface SessionCoordinatorProps {
@@ -31,6 +32,7 @@ export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = 
   const [latestDaytimeZettel, setLatestDaytimeZettel] = useState<{ title: string; body: string } | null>(null);
   const [quarantinedCards, setQuarantinedCards] = useState<any[]>([]);
   const [isSplittingCardId, setIsSplittingCardId] = useState<string | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
 
   const loadSession = async () => {
     try {
@@ -108,6 +110,30 @@ export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = 
     setActiveTab("EVENING");
   };
 
+  const handleResetCycle = async () => {
+    if (!session?.id) return;
+    setIsResetting(true);
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: session.id,
+          resetCycle: true,
+        }),
+      });
+      if (res.ok) {
+        await loadSession();
+        setActiveTab("MORNING");
+        onDataMutated?.();
+      }
+    } catch (err) {
+      console.error("Lỗi khởi tạo chu kỳ mới:", err);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-12 text-xs font-mono text-slate-500">
@@ -166,6 +192,40 @@ export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = 
           <span className="px-3 py-1 bg-amber-900/80 text-amber-300 text-xs font-mono rounded-lg border border-amber-700 shrink-0 font-bold">
             {morningMinutes}m Sáng / {eveningMinutes}m Tối
           </span>
+        </div>
+      )}
+
+      {/* Banner Hoàn Tất Chu Kỳ Học 60 Phút & Nút Khởi Tạo Chu Kỳ Mới */}
+      {session?.s3_completed_at && (
+        <div className="bg-gradient-to-r from-emerald-950/70 via-slate-900 to-teal-950/70 border border-emerald-600/50 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 shadow-xl animate-in fade-in">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-2xl text-emerald-400 shrink-0">
+              <CheckCircle2 className="w-7 h-7" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h3 className="text-base font-bold text-white">
+                  Chu Kỳ Luyện Tập 60 Phút Hôm Nay Đã Hoàn Tất Toàn Diện!
+                </h3>
+                <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-900/80 text-emerald-300 border border-emerald-700 font-bold uppercase tracking-wider">
+                  SOP COMPLETED
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                Toàn bộ 4 phân hệ (Sáng – Giữa Ngày – Chiều – Tối) đã khép kín. Tri thức đã được bảo toàn qua truy xuất đan xen và cam kết quyết định. Bạn có thể chủ động bắt đầu chu kỳ luyện tập mới để học bài tiếp theo trong lộ trình 5 ngày bất cứ lúc nào.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleResetCycle}
+            disabled={isResetting}
+            className="px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition flex items-center gap-2 shrink-0 shadow-lg hover:shadow-emerald-500/25 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${isResetting ? "animate-spin" : ""}`} />
+            <span>🔄 Khởi Tạo Chu Kỳ Luyện Tập Mới / Học Tiếp Bài Tiếp Theo</span>
+          </button>
         </div>
       )}
 
@@ -307,6 +367,8 @@ export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = 
             loadSession();
             onDataMutated?.();
           }}
+          onResetCycle={handleResetCycle}
+          isResetting={isResetting}
         />
       )}
 

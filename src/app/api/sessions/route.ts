@@ -109,6 +109,23 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
+    // Khởi tạo chu kỳ luyện tập mới / học tiếp bài tiếp theo
+    if (body.resetCycle) {
+      await db.query(
+        `UPDATE learning_sessions 
+         SET s1_hypothesis_text = NULL,
+             s1_completed_at = NULL,
+             incubation_unlock_at = NULL,
+             s2_completed_at = NULL,
+             s3_blank_recall_data = NULL,
+             s3_completed_at = NULL
+         WHERE id = $1`,
+        [targetSessionId]
+      );
+      const updated = await db.query(`SELECT * FROM learning_sessions WHERE id = $1`, [targetSessionId]);
+      return NextResponse.json({ session: updated.rows[0], message: "Reset cycle successful" });
+    }
+
     // Cập nhật s1_hypothesis_text độc lập
     if (s1_hypothesis_text !== undefined) {
       await db.query(
