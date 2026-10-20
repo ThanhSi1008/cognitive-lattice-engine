@@ -14,6 +14,7 @@ export interface InterleavingCardItem {
   front_prompt?: string;
   back_structure?: string;
   difficulty?: number;
+  stability?: number;
   is_leech?: boolean;
   poolType?: "SCAFFOLDING" | "INTERLEAVING";
 }

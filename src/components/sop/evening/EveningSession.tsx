@@ -37,24 +37,24 @@ export function EveningSession({
           // Dữ liệu mẫu nếu chưa có thẻ trong db
           setQueue([
             {
-              id: "card-sample-1",
+              id: "11111111-1111-4111-8111-111111111101",
               zettel_uid: "20261019000001",
               domain_category: "Cognitive Science",
-              reps: 3,
-              state: "REVIEW",
-              elapsed_days: 10,
-              front_prompt: "Trong bối cảnh người học chuyển đổi giữa các miền kiến thức khác nhau, nếu không có cơ chế giàn giáo thích ứng (adaptive scaffolding) ban đầu thì hiện tượng bệnh lý nhận thức nào sẽ xảy ra?",
-              back_structure: "Hiện tượng Cognitive Overload (Quá tải nhận thức) và phân rã các sơ đồ phân loại trước khi kịp củng cố.",
-            },
-            {
-              id: "card-sample-2",
-              zettel_uid: "20261019000002",
-              domain_category: "Financial Engineering",
               reps: 2,
               state: "REVIEW",
-              elapsed_days: 14,
-              front_prompt: "Nếu thị trường rơi vào bẫy thanh khoản nhưng ngân hàng trung ương tiếp tục nới lỏng định lượng mà không giải quyết được bảng cân đối kế toán của khu vực tư nhân, hệ quả phản hồi cấp 2 là gì?",
-              back_structure: "Hiện tượng nghịch lý tiết kiệm và đẩy dòng vốn đầu cơ vào tài sản rủi ro thay vì nền kinh tế thực.",
+              elapsed_days: 2,
+              front_prompt: "Giả sử tỷ lệ nợ nhận thức DRLI vượt quá ngưỡng 1.5 nhưng hệ thống không ngắt mạch mà tiếp tục cho nạp tài liệu mới, phản ứng dây chuyền nào sẽ xảy ra đối với cấu trúc mạng lưới nơ-ron?",
+              back_structure: "Hiện tượng quá tải bộ nhớ làm việc (Cognitive Overload), suy thoái độ ổn định của các thẻ cũ và kích hoạt ảo tưởng thông thạo (Illusion of Competence).",
+            },
+            {
+              id: "11111111-1111-4111-8111-111111111102",
+              zettel_uid: "20261019000002",
+              domain_category: "System Dynamics",
+              reps: 2,
+              state: "REVIEW",
+              elapsed_days: 2,
+              front_prompt: "So sánh sự khác biệt bản chất giữa phản ứng thích ứng ngắn hạn của các tác tử đơn lẻ với cân bằng động dài hạn của toàn bộ hệ thống phức hợp khi có can thiệp chính sách cục bộ?",
+              back_structure: "Can thiệp cục bộ giải quyết triệu chứng bề mặt tức thời nhưng tạo ra các vòng phản hồi bù trừ cấp hai làm trầm trọng thêm vấn đề gốc rễ sau một khoảng trễ thời gian.",
             },
           ]);
         }
@@ -68,6 +68,10 @@ export function EveningSession({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cardId, grade, responseTimeSec }),
     });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Lỗi lưu kết quả ôn tập thẻ FSRS");
+    }
     return await res.json();
   };
 

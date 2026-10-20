@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
       front_prompt: row.front_prompt,
       back_structure: row.back_structure,
       difficulty: row.difficulty,
+      stability: row.stability,
     }));
 
     // Thực thi nghiêm ngặt RULE-03 (Scaffolding vs. Interleaving):

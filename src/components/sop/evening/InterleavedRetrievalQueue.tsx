@@ -29,6 +29,16 @@ export function InterleavedRetrievalQueue({
   const [isRefactoringLeech, setIsRefactoringLeech] = useState(false);
   const [refactorSuccessMsg, setRefactorSuccessMsg] = useState<string | null>(null);
 
+  // Memory Stability Jump Telemetry state
+  const [stabilityFeedback, setStabilityFeedback] = useState<{
+    stabilityBefore: number;
+    stabilityAfter: number;
+    stabilityJump: number;
+    scheduledDays: number;
+    grade: Grade;
+  } | null>(null);
+  const [autoNextTimer, setAutoNextTimer] = useState<NodeJS.Timeout | null>(null);
+
   const currentCard = queue[currentIndex] || null;
 
   // Đếm thời gian phản hồi thực tế
@@ -42,12 +52,14 @@ export function InterleavedRetrievalQueue({
 
   // Reset khi chuyển thẻ
   useEffect(() => {
+    if (autoNextTimer) clearTimeout(autoNextTimer);
     setCommitText("");
     setIsRevealed(false);
     setResponseTimeSec(0);
     setIsTimerActive(true);
     setRecallEvaluation(null);
     setIsEvaluating(false);
+    setStabilityFeedback(null);
   }, [currentIndex]);
 
   if (!currentCard) {
@@ -104,15 +116,53 @@ export function InterleavedRetrievalQueue({
 
   const handleGrade = async (grade: Grade) => {
     try {
-      await onCardReviewed(currentCard.id, grade, responseTimeSec);
+      const res = await onCardReviewed(currentCard.id, grade, responseTimeSec);
 
-      if (currentIndex + 1 < queue.length) {
-        setCurrentIndex((prev) => prev + 1);
-      } else {
-        onQueueFinished();
-      }
+      const stabilityBefore = Number(currentCard.stability || 0);
+      const stabilityAfter =
+        res?.schedulingResult?.card?.stability !== undefined
+          ? Number(res.schedulingResult.card.stability)
+          : res?.updatedCard?.stability !== undefined
+          ? Number(res.updatedCard.stability)
+          : stabilityBefore;
+
+      const stabilityJump =
+        res?.schedulingResult?.stabilityJump !== undefined
+          ? Number(res.schedulingResult.stabilityJump)
+          : Number((stabilityAfter - stabilityBefore).toFixed(2));
+
+      const scheduledDays =
+        res?.schedulingResult?.card?.scheduled_days !== undefined
+          ? Number(res.schedulingResult.card.scheduled_days)
+          : res?.updatedCard?.scheduled_days !== undefined
+          ? Number(res.updatedCard.scheduled_days)
+          : 1;
+
+      setStabilityFeedback({
+        stabilityBefore,
+        stabilityAfter,
+        stabilityJump,
+        scheduledDays,
+        grade,
+      });
+
+      // Tự động chuyển thẻ sau 1.8 giây nếu người học không bấm nút thủ công
+      const timer = setTimeout(() => {
+        handleProceedNext();
+      }, 1800);
+      setAutoNextTimer(timer);
     } catch (err: any) {
       alert("Lỗi ghi nhận kết quả: " + err.message);
+    }
+  };
+
+  const handleProceedNext = () => {
+    if (autoNextTimer) clearTimeout(autoNextTimer);
+    setStabilityFeedback(null);
+    if (currentIndex + 1 < queue.length) {
+      setCurrentIndex((prev) => prev + 1);
+    } else {
+      onQueueFinished();
     }
   };
 
@@ -360,62 +410,104 @@ export function InterleavedRetrievalQueue({
               ) : null}
             </div>
 
-            {/* FSRS Scoring Bar */}
-            <div className="flex flex-col gap-2 pt-2">
-              <span className="text-xs text-slate-400 text-center font-mono">
-                Chọn mức điểm lưu giữ FSRS-5:
-              </span>
-
-              <div className="grid grid-cols-4 gap-3">
-                <button
-                  onClick={() => handleGrade(1)}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
-                    recallEvaluation?.recommendedFsrsRating === 1
-                      ? "bg-rose-950 border-rose-500 ring-2 ring-rose-500/50"
-                      : "bg-slate-900/60 border-slate-800 hover:border-rose-700/60 text-rose-300"
-                  }`}
-                >
-                  <span className="font-bold text-sm text-rose-400">1: Again</span>
-                  <span className="text-[10px] text-slate-400">Quên hoàn toàn</span>
-                </button>
-
-                <button
-                  onClick={() => handleGrade(2)}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
-                    recallEvaluation?.recommendedFsrsRating === 2
-                      ? "bg-amber-950 border-amber-500 ring-2 ring-amber-500/50"
-                      : "bg-slate-900/60 border-slate-800 hover:border-amber-700/60 text-amber-300"
-                  }`}
-                >
-                  <span className="font-bold text-sm text-amber-400">2: Hard</span>
-                  <span className="text-[10px] text-slate-400">Ma sát cao, nhớ chậm</span>
-                </button>
-
-                <button
-                  onClick={() => handleGrade(3)}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
-                    recallEvaluation?.recommendedFsrsRating === 3
-                      ? "bg-cyan-950 border-cyan-500 ring-2 ring-cyan-500/50"
-                      : "bg-slate-900/60 border-slate-800 hover:border-cyan-700/60 text-cyan-300"
-                  }`}
-                >
-                  <span className="font-bold text-sm text-cyan-400">3: Good</span>
-                  <span className="text-[10px] text-slate-400">Nhớ đúng khung</span>
-                </button>
+            {/* Memory Stability Jump Telemetry Banner hoặc FSRS Scoring Bar */}
+            {stabilityFeedback ? (
+              <div className="bg-gradient-to-r from-cyan-950/80 via-slate-900/90 to-emerald-950/80 border border-cyan-500/60 rounded-xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl shadow-cyan-950/30 animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex flex-col gap-1.5 text-center md:text-left">
+                  <div className="flex items-center justify-center md:justify-start gap-2 text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">
+                    <Zap className="w-4 h-4 text-cyan-400" />
+                    <span>Bước Nhảy Độ Ổn Định Ký Ức (&Delta;S Telemetry)</span>
+                  </div>
+                  <div className="text-white text-sm font-semibold flex flex-wrap items-center justify-center md:justify-start gap-2">
+                    <span>
+                      Độ ổn định: {stabilityFeedback.stabilityBefore.toFixed(1)} ngày &rarr;{" "}
+                      <strong className="text-cyan-300">{stabilityFeedback.stabilityAfter.toFixed(1)} ngày</strong>
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-xs font-mono font-bold border ${
+                        stabilityFeedback.stabilityJump >= 0
+                          ? "bg-emerald-950 text-emerald-400 border-emerald-800"
+                          : "bg-rose-950 text-rose-400 border-rose-800"
+                      }`}
+                    >
+                      &Delta;S = {stabilityFeedback.stabilityJump >= 0 ? "+" : ""}
+                      {stabilityFeedback.stabilityJump.toFixed(2)} ngày
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300">
+                    Chu kỳ hẹn ôn tập tiếp theo:{" "}
+                    <strong className="text-emerald-400">{stabilityFeedback.scheduledDays} ngày nữa</strong> (FSRS-5
+                    Lãi kép nhận thức)
+                  </p>
+                </div>
 
                 <button
-                  onClick={() => handleGrade(4)}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
-                    recallEvaluation?.recommendedFsrsRating === 4
-                      ? "bg-emerald-950 border-emerald-500 ring-2 ring-emerald-500/50"
-                      : "bg-slate-900/60 border-slate-800 hover:border-emerald-700/60 text-emerald-300"
-                  }`}
+                  type="button"
+                  onClick={handleProceedNext}
+                  className="px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-lg text-xs flex items-center gap-2 transition cursor-pointer shadow-lg shadow-cyan-500/20 shrink-0"
                 >
-                  <span className="font-bold text-sm text-emerald-400">4: Easy</span>
-                  <span className="text-[10px] text-slate-400">Trực giác tức thì</span>
+                  <span>Sang Thẻ Tiếp Theo</span>
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
-            </div>
+            ) : (
+              /* FSRS Scoring Bar */
+              <div className="flex flex-col gap-2 pt-2">
+                <span className="text-xs text-slate-400 text-center font-mono">
+                  Chọn mức điểm lưu giữ FSRS-5:
+                </span>
+
+                <div className="grid grid-cols-4 gap-3">
+                  <button
+                    onClick={() => handleGrade(1)}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
+                      recallEvaluation?.recommendedFsrsRating === 1
+                        ? "bg-rose-950 border-rose-500 ring-2 ring-rose-500/50"
+                        : "bg-slate-900/60 border-slate-800 hover:border-rose-700/60 text-rose-300"
+                    }`}
+                  >
+                    <span className="font-bold text-sm text-rose-400">1: Again</span>
+                    <span className="text-[10px] text-slate-400">Quên hoàn toàn</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleGrade(2)}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
+                      recallEvaluation?.recommendedFsrsRating === 2
+                        ? "bg-amber-950 border-amber-500 ring-2 ring-amber-500/50"
+                        : "bg-slate-900/60 border-slate-800 hover:border-amber-700/60 text-amber-300"
+                    }`}
+                  >
+                    <span className="font-bold text-sm text-amber-400">2: Hard</span>
+                    <span className="text-[10px] text-slate-400">Ma sát cao, nhớ chậm</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleGrade(3)}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
+                      recallEvaluation?.recommendedFsrsRating === 3
+                        ? "bg-cyan-950 border-cyan-500 ring-2 ring-cyan-500/50"
+                        : "bg-slate-900/60 border-slate-800 hover:border-cyan-700/60 text-cyan-300"
+                    }`}
+                  >
+                    <span className="font-bold text-sm text-cyan-400">3: Good</span>
+                    <span className="text-[10px] text-slate-400">Nhớ đúng khung</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleGrade(4)}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-xl border transition cursor-pointer ${
+                      recallEvaluation?.recommendedFsrsRating === 4
+                        ? "bg-emerald-950 border-emerald-500 ring-2 ring-emerald-500/50"
+                        : "bg-slate-900/60 border-slate-800 hover:border-emerald-700/60 text-emerald-300"
+                    }`}
+                  >
+                    <span className="font-bold text-sm text-emerald-400">4: Easy</span>
+                    <span className="text-[10px] text-slate-400">Trực giác tức thì</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

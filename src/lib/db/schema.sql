@@ -372,6 +372,48 @@ BEGIN
     SET state = 'PUBLISHED',
         created_at = NOW() - INTERVAL '30 days'
     WHERE zettel_uid IN ('20261019000001', '20261019000002', '20261019000003');
+
+    -- Chèn 2 thẻ FSRS hạt giống với UUID hợp lệ cố định để đảm bảo quy trình ôn tập FSRS hoạt động ngay từ đầu
+    INSERT INTO fsrs_cards (
+        id, user_id, zettel_uid, card_type, front_prompt, back_structure,
+        stability, difficulty, elapsed_days, scheduled_days, reps, lapses,
+        avg_response_time_sec, state, due_date
+    ) VALUES
+        (
+            '11111111-1111-4111-8111-111111111101',
+            '00000000-0000-0000-0000-000000000001',
+            '20261019000001',
+            'COUNTERFACTUAL',
+            'Giả sử tỷ lệ nợ nhận thức DRLI vượt quá ngưỡng 1.5 nhưng hệ thống không ngắt mạch mà tiếp tục cho nạp tài liệu mới, phản ứng dây chuyền nào sẽ xảy ra đối với cấu trúc mạng lưới nơ-ron?',
+            'Hiện tượng quá tải bộ nhớ làm việc (Cognitive Overload), suy thoái độ ổn định của các thẻ cũ và kích hoạt ảo tưởng thông thạo (Illusion of Competence).',
+            4.5,
+            5.0,
+            2,
+            4,
+            2,
+            0,
+            45.0,
+            'REVIEW',
+            NOW() - INTERVAL '1 hour'
+        ),
+        (
+            '11111111-1111-4111-8111-111111111102',
+            '00000000-0000-0000-0000-000000000001',
+            '20261019000002',
+            'INTERLEAVED_CONTRAST',
+            'So sánh sự khác biệt bản chất giữa phản ứng thích ứng ngắn hạn của các tác tử đơn lẻ với cân bằng động dài hạn của toàn bộ hệ thống phức hợp khi có can thiệp chính sách cục bộ?',
+            'Can thiệp cục bộ giải quyết triệu chứng bề mặt tức thời nhưng tạo ra các vòng phản hồi bù trừ cấp hai làm trầm trọng thêm vấn đề gốc rễ sau một khoảng trễ thời gian.',
+            4.5,
+            5.0,
+            2,
+            4,
+            2,
+            0,
+            50.0,
+            'REVIEW',
+            NOW() - INTERVAL '1 hour'
+        )
+    ON CONFLICT (id) DO NOTHING;
 END $$;
 
 
