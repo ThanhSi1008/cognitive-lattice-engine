@@ -400,12 +400,12 @@ export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = 
                               cardId: card.id,
                               atomicCards: [
                                 {
-                                  front_prompt: `[Nguyên tử 1: Tiền đề kích hoạt] Tiền đề then chốt của cơ chế trong ${card.zettel_uid} là gì?`,
-                                  back_structure: `Tiền đề điều kiện tiên quyết của mô hình.`,
+                                  front_prompt: `[Phân rã tiền đề ${card.zettel_uid}]: Phân tích điều kiện biên tiên quyết buộc phải hội đủ để kích hoạt cơ chế vận hành trong mô hình này.`,
+                                  back_structure: `Điều kiện biên tiên quyết phân lập duy nhất biến số kích hoạt đầu vào.`,
                                 },
                                 {
-                                  front_prompt: `[Nguyên tử 2: Chuỗi nhân quả] Cơ chế chuyển hóa dẫn đến kết quả trong ${card.zettel_uid} là gì?`,
-                                  back_structure: `Chuỗi mắt xích nhân quả trung gian.`,
+                                  front_prompt: `[Phân rã truyền dẫn ${card.zettel_uid}]: Giải trình chuỗi phản ứng dây chuyền chuyển hóa tác động đầu vào thành kết quả đầu ra trong hệ thống này.`,
+                                  back_structure: `Chuỗi mắt xích trung gian giải thích cơ chế biến đổi trạng thái hệ thống.`,
                                 },
                               ],
                             }),

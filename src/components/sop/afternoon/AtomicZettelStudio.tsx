@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { countWords } from "@/lib/validations";
+import { countWords, ANTI_ROTE_REGEX } from "@/lib/validations";
 import { TipTapEditor } from "@/components/editor/TipTapEditor";
 import { BiDirectionalLinkEngine, ZettelLinkItem } from "./BiDirectionalLinkEngine";
 import { PerturbationCardStudio, PerturbationCardItem } from "./PerturbationCardStudio";
@@ -108,7 +108,15 @@ export function AtomicZettelStudio({
   const isTitleValid = isTitleLengthValid && isTitlePropositional;
 
   const isLinksValid = links.length >= 2;
-  const isCardsValid = cards.length >= 2 && cards.length <= 3;
+  const isCardsValid =
+    cards.length >= 2 &&
+    cards.length <= 3 &&
+    cards.every(
+      (c) =>
+        c.front_prompt.trim().length >= 80 &&
+        !ANTI_ROTE_REGEX.test(c.front_prompt) &&
+        c.back_structure.trim().length >= 10
+    );
 
   const canPublish = isWordCountValid && isTitleValid && isLinksValid && isCardsValid;
 
@@ -181,19 +189,19 @@ export function AtomicZettelStudio({
     const counterfactual =
       frontierScenarios?.counterfactual ||
       socraticResult?.scenarios?.counterfactual ||
-      `Nếu các giả định tiên đề của "${titlePrefix}" bị đảo ngược hoàn toàn trong thực tế, cơ chế nào sẽ sụp đổ trước tiên?`;
+      `Nếu toàn bộ các giả định nền tảng của "${titlePrefix}" bị đảo ngược hoàn toàn trong thực nghiệm, mắt xích nhân quả nào sẽ phát sinh sụp đổ trước tiên?`;
 
     const interleavedContrast =
       frontierScenarios?.interleaved_contrast ||
       frontierScenarios?.interleavedContrast ||
       socraticResult?.scenarios?.interleavedContrast ||
-      `So sánh "${titlePrefix}" với một mô hình đối lập thoạt nhìn tương đồng: Đâu là điểm khác biệt nhân quả cấp độ hai?`;
+      `Đặt "${titlePrefix}" cạnh một mô hình đối lập thoạt nhìn tương đồng: Đâu là điểm phân rã bản chất ở các vòng phản hồi cấp độ hai giữa hai cơ chế?`;
 
     const farTransfer =
       frontierScenarios?.far_transfer ||
       frontierScenarios?.farTransfer ||
       socraticResult?.scenarios?.farTransfer ||
-      `Chuyển giao quy luật "${titlePrefix}" sang một lĩnh vực hoàn toàn xa lạ: Cấu trúc bất biến nào được bảo toàn?`;
+      `Vận dụng quy luật của "${titlePrefix}" sang một lĩnh vực hoàn toàn xa lạ: Cấu trúc bất biến và cơ chế truyền dẫn nào vẫn được bảo toàn nguyên vẹn?`;
 
     setCards([
       {
@@ -271,7 +279,7 @@ export function AtomicZettelStudio({
 
       // 4. Tạo các thẻ FSRS
       for (const card of cards) {
-        await fetch("/api/cards", {
+        const cardRes = await fetch("/api/cards", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -282,6 +290,11 @@ export function AtomicZettelStudio({
             back_structure: card.back_structure,
           }),
         });
+
+        if (!cardRes.ok) {
+          const err = await cardRes.json();
+          throw new Error(err.error || "Lỗi lưu thẻ FSRS");
+        }
       }
 
       onZettelPublished(zettelUid);

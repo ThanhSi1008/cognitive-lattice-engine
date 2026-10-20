@@ -404,12 +404,12 @@ export class SocraticMentorAgent {
         reason: "Thẻ này đã vượt ngưỡng rủi ro Leech (quên lặp đi lặp lại do tải nhận thức quá dày hoặc gộp nhiều ý). Cần phân rã thành các nguyên tử tối thiểu.",
         atomicCards: [
           {
-            frontScenario: `[Tiền đề then chốt]: Điều kiện tiên quyết để kích hoạt cơ chế là gì?`,
-            targetConcept: `Phân lập duy nhất biến số kích hoạt đầu vào.`,
+            frontScenario: `[Phân lập tiền đề kích hoạt]: Phân tích điều kiện biên cụ thể nào buộc phải thỏa mãn để kích hoạt cơ chế vận hành của mô hình này?`,
+            targetConcept: `Phân lập duy nhất biến số kích hoạt đầu vào của mô hình.`,
           },
           {
-            frontScenario: `[Cơ chế truyền dẫn]: Chuỗi phản ứng nào chuyển hóa đầu vào thành kết quả?`,
-            targetConcept: `Phân lập duy nhất bước trung gian nhân quả cốt lõi.`,
+            frontScenario: `[Phân lập truyền dẫn nhân quả]: Mô tả chuỗi phản ứng liên hoàn chuyển hóa tác động từ biến số đầu vào thành kết quả chung cuộc của hệ thống?`,
+            targetConcept: `Phân lập duy nhất bước trung gian nhân quả cốt lõi của chuỗi phản ứng.`,
           },
         ],
       };
@@ -494,7 +494,7 @@ export class SocraticMentorAgent {
       secondOrderConsequences,
       thirdOrderConsequences,
       crossDisciplinaryWarnings: [
-        "Kiểm tra lại nguyên lý Đòn Bẩy Tối Thiểu: Can thiệp nhỏ nhất có thể đảo chiều cục diện là gì?",
+        "Kiểm tra lại nguyên lý Đòn Bẩy Tối Thiểu: Xác định điểm can thiệp vi mô có khả năng tạo ra sự biến đổi cục diện vĩ mô trong hệ thống này.",
       ],
       isHighRisk: identifiedBiases.some((b) => b.severity === "HIGH"),
     };
