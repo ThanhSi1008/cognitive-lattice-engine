@@ -1,20 +1,27 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Lock, Timer, Brain, Coffee, Activity, Unlock } from "lucide-react";
+import { Lock, Timer, Brain, Coffee, Activity, Unlock, Zap } from "lucide-react";
 
 interface NeuralIncubationLockProps {
+  userId?: string;
+  sessionId?: string;
   s1CompletedAt?: Date | string | null;
   incubationUnlockAt?: Date | string | null;
   onUnlocked?: () => void;
+  onFastForward?: () => void;
 }
 
 export function NeuralIncubationLock({
+  userId = "00000000-0000-0000-0000-000000000001",
+  sessionId,
   s1CompletedAt,
   incubationUnlockAt,
   onUnlocked,
+  onFastForward,
 }: NeuralIncubationLockProps) {
   const [now, setNow] = useState(new Date());
+  const [isFastForwarding, setIsFastForwarding] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -41,6 +48,34 @@ export function NeuralIncubationLock({
       .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   };
 
+  const handleFastForward = async () => {
+    setIsFastForwarding(true);
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          sessionId,
+          simulateIncubationComplete: true,
+        }),
+      });
+
+      if (res.ok) {
+        if (onFastForward) {
+          onFastForward();
+        }
+        if (onUnlocked) {
+          onUnlocked();
+        }
+      }
+    } catch (err) {
+      console.error("Lỗi tua nhanh khoảng nghỉ 4 giờ:", err);
+    } finally {
+      setIsFastForwarding(false);
+    }
+  };
+
   return (
     <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-6 flex flex-col gap-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-4">
@@ -64,12 +99,27 @@ export function NeuralIncubationLock({
         </div>
 
         {unlockTime && (
-          <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-xl border border-slate-800">
-            <Timer className={`w-5 h-5 ${isLocked ? "text-amber-400 animate-spin" : "text-emerald-400"}`} />
-            <div>
-              <div className="text-[10px] text-slate-500 font-mono">Đếm ngược mở khóa</div>
-              <div className="font-mono text-xl font-bold text-white">
-                {isLocked ? formatCountdown(msRemaining) : "ĐÃ MỞ KHÓA"}
+          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3">
+            {isLocked && (
+              <button
+                type="button"
+                onClick={handleFastForward}
+                disabled={isFastForwarding}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition cursor-pointer disabled:opacity-50"
+                title="Tua nhanh thời gian ủ 4 giờ để mở khóa ngay Phiên Chiều"
+              >
+                <Zap className="w-4 h-4 fill-slate-950" />
+                <span>{isFastForwarding ? "Đang tua nhanh..." : "⚡ Tua Nhanh Khóa Ủ 4 Giờ (Mở Khóa Ngay)"}</span>
+              </button>
+            )}
+
+            <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-xl border border-slate-800">
+              <Timer className={`w-5 h-5 ${isLocked ? "text-amber-400 animate-spin" : "text-emerald-400"}`} />
+              <div>
+                <div className="text-[10px] text-slate-500 font-mono">Đếm ngược mở khóa</div>
+                <div className="font-mono text-xl font-bold text-white">
+                  {isLocked ? formatCountdown(msRemaining) : "ĐÃ MỞ KHÓA"}
+                </div>
               </div>
             </div>
           </div>

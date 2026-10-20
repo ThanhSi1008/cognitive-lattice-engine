@@ -19,12 +19,24 @@ import {
   Check,
   Globe,
   ExternalLink,
+  Bot,
+  Zap,
+  Calendar,
+  Layers,
+  ChevronRight,
+  ShieldCheck,
 } from "lucide-react";
 import {
   buildAcademicSearchQueries,
   fetchDoiMetadata,
   AcademicSearchQueries,
 } from "@/lib/algorithms/academicSearch";
+import {
+  generateFrontierAiPrompt,
+  parseExternalAiResponse,
+  CleExternalAiPayload,
+  CleIngestModule,
+} from "@/lib/validations/ingestSchema";
 
 interface MorningSessionProps {
   userId?: string;
@@ -43,7 +55,7 @@ export function MorningSession({
   const [step, setStep] = useState<"INGEST_1_0" | "GATE_1_1" | "READER_1_2" | "CLOSED_BOOK_1_3" | "COMPLETED">("INGEST_1_0");
 
   // State tài liệu nguồn
-  const [ingestMode, setIngestMode] = useState<"PRESET" | "CUSTOM" | "SEARCH_BUILDER">("PRESET");
+  const [ingestMode, setIngestMode] = useState<"FRONTIER_AI" | "PRESET" | "CUSTOM" | "SEARCH_BUILDER">("FRONTIER_AI");
   const [selectedPresetId, setSelectedPresetId] = useState("HOWARD_MARKS_SECOND_ORDER");
   const [customTitle, setCustomTitle] = useState("");
   const [customAuthor, setCustomAuthor] = useState("");
@@ -52,6 +64,27 @@ export function MorningSession({
   const [customDoi, setCustomDoi] = useState("");
   const [isIngesting, setIsIngesting] = useState(false);
   const [isResolvingDoi, setIsResolvingDoi] = useState(false);
+
+  // State Frontier AI Bridge (Gemini 4 Argon High Thinking)
+  const [frontierTopic, setFrontierTopic] = useState("Tự do tài chính & Quy tắc rút vốn an toàn 4%");
+  const [frontierMode, setFrontierMode] = useState<"roadmap_5day" | "single_lesson">("roadmap_5day");
+  const [frontierCopied, setFrontierCopied] = useState(false);
+  const [frontierRawInput, setFrontierRawInput] = useState("");
+  const [frontierParseError, setFrontierParseError] = useState<string | null>(null);
+  const [importedRoadmap, setImportedRoadmap] = useState<CleExternalAiPayload | null>(null);
+
+  // Khôi phục roadmap từ localStorage nếu có
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("cle_active_roadmap");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.roadmap?.length > 0) {
+          setImportedRoadmap(parsed);
+        }
+      }
+    } catch {}
+  }, []);
 
   // State Trình tạo truy vấn học thuật PICO
   const [picoTopic, setPicoTopic] = useState("");
@@ -65,6 +98,50 @@ export function MorningSession({
     navigator.clipboard.writeText(queryStr);
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const handleCopyFrontierPrompt = () => {
+    const promptText = generateFrontierAiPrompt(frontierTopic, frontierMode);
+    navigator.clipboard.writeText(promptText);
+    setFrontierCopied(true);
+    setTimeout(() => setFrontierCopied(false), 2500);
+  };
+
+  const handleParseFrontierResponse = () => {
+    setFrontierParseError(null);
+    if (!frontierRawInput.trim()) {
+      setFrontierParseError("Vui lòng dán câu trả lời từ Gemini 4 Argon High Thinking trước khi phân tích.");
+      return;
+    }
+
+    const res = parseExternalAiResponse(frontierRawInput);
+    if (!res.success || !res.data) {
+      setFrontierParseError(res.error || "Không thể phân tích dữ liệu JSON.");
+      return;
+    }
+
+    setImportedRoadmap(res.data);
+    try {
+      localStorage.setItem("cle_active_roadmap", JSON.stringify(res.data));
+    } catch {}
+  };
+
+  const handleSelectRoadmapModule = (module: CleIngestModule) => {
+    setActiveConcept({
+      title: module.title,
+      context: `${module.citation.author} (${module.citation.year}) • ${importedRoadmap?.domain || "Frontier Cognitive Domain"}`,
+      sourceBlocks: module.source_blocks,
+      citation: {
+        author: module.citation.author,
+        year: typeof module.citation.year === "string" ? parseInt(module.citation.year, 10) || 2026 : module.citation.year,
+        title: module.citation.title,
+        doi: module.citation.doi || `doi:frontier.${module.module_id.toLowerCase()}`,
+      },
+      criticalAuditScaffold: module.critical_audit_scaffold,
+      analogicalMatrixScaffold: module.analogical_matrix_scaffold,
+    });
+
+    setStep("GATE_1_1");
   };
 
   const handleBuildQueries = (e: React.FormEvent) => {
@@ -98,6 +175,8 @@ export function MorningSession({
     context: string;
     sourceBlocks: string[];
     citation?: CitationData;
+    criticalAuditScaffold?: any;
+    analogicalMatrixScaffold?: any;
   }>({
     title: "Tư Duy Cấp Độ Hai và Phân Tích Hệ Quả Ngoại Vi Trong Môi Trường Phức Hợp",
     context: "Howard Marks (2011) • Behavioral Economics & Risk Architecture",
@@ -122,7 +201,7 @@ export function MorningSession({
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Xử lý nạp tài liệu từ API
+  // Xử lý nạp tài liệu từ API Preset / Custom
   const handleLoadSource = async (presetOverride?: string) => {
     setIsIngesting(true);
     try {
@@ -153,6 +232,14 @@ export function MorningSession({
         context: `${data.author} (${data.year}) • ${data.domain}`,
         sourceBlocks: data.sourceBlocks,
         citation: data.citation,
+        criticalAuditScaffold: data.criticalAuditDefaults
+          ? {
+              study_design: data.criticalAuditDefaults.study_design,
+              falsifiability_condition: data.criticalAuditDefaults.falsifiability,
+              sample_size_and_replicability: data.criticalAuditDefaults.sample_size,
+              counter_evidence_or_rival_model: data.criticalAuditDefaults.counter_evidence,
+            }
+          : undefined,
       });
 
       setStep("GATE_1_1");
@@ -170,9 +257,13 @@ export function MorningSession({
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
-      setCustomText(content);
-      if (!customTitle) {
-        setCustomTitle(file.name.replace(/\.[^/.]+$/, ""));
+      if (ingestMode === "FRONTIER_AI") {
+        setFrontierRawInput(content);
+      } else {
+        setCustomText(content);
+        if (!customTitle) {
+          setCustomTitle(file.name.replace(/\.[^/.]+$/, ""));
+        }
       }
     };
     reader.readAsText(file);
@@ -215,7 +306,19 @@ export function MorningSession({
             </h2>
           </div>
 
-          <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs font-mono">
+          <div className="flex flex-wrap bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs font-mono gap-1">
+            <button
+              type="button"
+              onClick={() => setIngestMode("FRONTIER_AI")}
+              className={`px-3 py-1.5 rounded transition flex items-center gap-1.5 ${
+                ingestMode === "FRONTIER_AI"
+                  ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-bold shadow-md shadow-cyan-500/20"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5" />
+              <span>🚀 Gemini 4 Argon Bridge</span>
+            </button>
             <button
               type="button"
               onClick={() => setIngestMode("PRESET")}
@@ -246,6 +349,178 @@ export function MorningSession({
           </div>
         </div>
 
+        {/* 1. TAB FRONTIER AI BRIDGE (GEMINI 4 ARGON HIGH THINKING) */}
+        {ingestMode === "FRONTIER_AI" && (
+          <div className="flex flex-col gap-6">
+            <div className="bg-gradient-to-br from-cyan-950/40 via-blue-950/20 to-slate-900 border border-cyan-800/50 p-4 rounded-xl flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-cyan-300 font-semibold text-xs font-mono">
+                <Bot className="w-4 h-4 text-cyan-400" />
+                <span>Cơ Chế Tải Bớt Nhận Thức Hiệu Quả (Productive Cognitive Offloading)</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Sinh Prompt chuẩn hóa để hỏi <strong>Gemini 4 Argon High Thinking</strong> trên web, sau đó dán kết quả JSON vào CLE.
+                Dữ liệu bài học sẽ được nạp thẳng vào <strong>Cổng Đoán Trước (Đang bị mờ 12px)</strong>, bảo toàn 100% <em>Hiệu Ứng Tự Sinh (Generation Effect)</em> mà không bị lộ nội dung trước khi tư duy!
+              </p>
+            </div>
+
+            {/* BƯỚC A: TẠO PROMPT CHUẨN */}
+            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-xl flex flex-col gap-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-cyan-400 font-mono flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-bold flex items-center justify-center">A</span>
+                  Tạo Prompt Chuẩn Cho Gemini 4 Argon High Thinking
+                </span>
+                <div className="flex items-center gap-2 text-[11px] font-mono">
+                  <label className="flex items-center gap-1 cursor-pointer text-slate-300">
+                    <input
+                      type="radio"
+                      name="frontier_mode"
+                      checked={frontierMode === "roadmap_5day"}
+                      onChange={() => setFrontierMode("roadmap_5day")}
+                      className="accent-cyan-500"
+                    />
+                    <span>Lộ trình 5 ngày</span>
+                  </label>
+                  <label className="flex items-center gap-1 cursor-pointer text-slate-300">
+                    <input
+                      type="radio"
+                      name="frontier_mode"
+                      checked={frontierMode === "single_lesson"}
+                      onChange={() => setFrontierMode("single_lesson")}
+                      className="accent-cyan-500"
+                    />
+                    <span>1 Bài chuyên sâu</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={frontierTopic}
+                    onChange={(e) => setFrontierTopic(e.target.value)}
+                    placeholder="Nhập chủ đề muốn học (Ví dụ: Tự do tài chính & Quy tắc rút vốn an toàn 4%, Lý thuyết trò chơi...)"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyFrontierPrompt}
+                  className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 shadow-lg shadow-cyan-500/20"
+                >
+                  {frontierCopied ? <Check className="w-4 h-4 text-slate-950" /> : <Copy className="w-4 h-4" />}
+                  <span>{frontierCopied ? "Đã Sao Chép Prompt!" : "📋 Sao Chép Prompt Cho Gemini 4 Argon"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* BƯỚC B: DÁN KẾT QUẢ VÀ NẠP LỘ TRÌNH */}
+            <div className="bg-slate-900/60 border border-slate-800 p-4 rounded-xl flex flex-col gap-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-emerald-400 font-mono flex items-center gap-1.5">
+                  <span className="w-4 h-4 rounded-full bg-emerald-500 text-slate-950 text-[10px] font-bold flex items-center justify-center">B</span>
+                  Dán Kết Quả JSON/Markdown Từ Gemini 4 Argon
+                </span>
+                <label className="cursor-pointer text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-mono text-[11px]">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Tải tệp .json / .md</span>
+                  <input type="file" accept=".json,.md,.txt" onChange={handleFileUpload} className="hidden" />
+                </label>
+              </div>
+
+              <textarea
+                rows={4}
+                value={frontierRawInput}
+                onChange={(e) => setFrontierRawInput(e.target.value)}
+                placeholder="Dán toàn bộ câu trả lời của Gemini 4 Argon High Thinking vào đây (hỗ trợ cả khối ```json ... ``` hoặc JSON thuần)..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 leading-relaxed font-mono"
+              />
+
+              {frontierParseError && (
+                <div className="bg-rose-950/60 border border-rose-800 p-3 rounded-lg text-xs text-rose-300 flex items-center gap-2">
+                  <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{frontierParseError}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleParseFrontierResponse}
+                  disabled={!frontierRawInput.trim()}
+                  className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 text-xs font-bold rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow-lg shadow-emerald-500/20"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>⚡ Phân Tích & Nạp Lộ Trình Vào CLE</span>
+                </button>
+              </div>
+            </div>
+
+            {/* DANH SÁCH BÀI HỌC TRONG LỘ TRÌNH (BẢO TOÀN RULE-04: KHÔNG HIỂN THỊ SOURCE_BLOCKS) */}
+            {importedRoadmap && importedRoadmap.roadmap && importedRoadmap.roadmap.length > 0 && (
+              <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-xl flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800 gap-2">
+                  <div>
+                    <div className="text-[10px] font-mono text-cyan-400 uppercase tracking-wider">
+                      Lộ Trình Đã Nhập: {importedRoadmap.domain}
+                    </div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-cyan-400" />
+                      <span>{importedRoadmap.topic_name}</span>
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 bg-cyan-950 border border-cyan-800 text-cyan-300 text-[11px] font-mono rounded">
+                      {importedRoadmap.roadmap.length} Bài Học Nguyên Tử
+                    </span>
+                    <span className="px-2.5 py-1 bg-emerald-950 border border-emerald-800 text-emerald-300 text-[11px] font-mono rounded flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3" />
+                      <span>RULE-04 Active</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3">
+                  {importedRoadmap.roadmap.map((mod, idx) => (
+                    <div
+                      key={mod.module_id || idx}
+                      className="p-4 rounded-xl border border-slate-800 bg-slate-950/70 hover:border-cyan-500/50 transition flex flex-col md:flex-row md:items-center justify-between gap-4 group"
+                    >
+                      <div className="flex flex-col gap-1.5 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 bg-cyan-950/80 border border-cyan-800 text-cyan-400 font-mono text-[10px] font-bold rounded">
+                            DAY {mod.day || idx + 1}
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-400">
+                            {mod.citation.author} ({mod.citation.year}) • {mod.citation.title}
+                          </span>
+                        </div>
+                        <h4 className="text-xs font-bold text-white group-hover:text-cyan-300 transition">
+                          {mod.title}
+                        </h4>
+                        <p className="text-[11px] text-slate-400 line-clamp-2 italic">
+                          &quot;{mod.activation_context}&quot;
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectRoadmapModule(mod)}
+                        className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 shadow-md shadow-cyan-500/10"
+                      >
+                        <span>Học Bài Này (Vào Cổng Đoán Trước)</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 2. TAB THƯ VIỆN MẪU */}
         {ingestMode === "PRESET" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div
@@ -318,8 +593,8 @@ export function MorningSession({
           </div>
         )}
 
+        {/* 3. TAB TỰ NẠP / DOI */}
         {ingestMode === "CUSTOM" && (
-          /* Chế độ nhập văn bản hoặc tải tệp */
           <div className="flex flex-col gap-4">
             {/* Tra cứu nhanh theo mã DOI */}
             <div className="bg-slate-900/60 border border-slate-800 p-3 rounded-xl flex flex-col sm:flex-row gap-2.5 items-center">
@@ -403,8 +678,8 @@ export function MorningSession({
           </div>
         )}
 
+        {/* 4. TAB TRỢ LÝ TRUY VẤN PRISMA / PICO */}
         {ingestMode === "SEARCH_BUILDER" && (
-          /* Trợ Lý Truy Vấn Tổng Quan Hệ Thống PRISMA / PICO */
           <div className="flex flex-col gap-4">
             <div className="bg-purple-950/30 border border-purple-800/60 p-4 rounded-xl flex flex-col gap-2">
               <div className="flex items-center gap-2 text-purple-300 font-semibold text-xs">
@@ -589,6 +864,8 @@ export function MorningSession({
         conceptTitle={activeConcept.title}
         sourceTextBlocks={activeConcept.sourceBlocks}
         initialHypothesis={hypothesis}
+        initialCriticalAudit={activeConcept.criticalAuditScaffold}
+        initialAnalogicalMatrix={activeConcept.analogicalMatrixScaffold}
         onProceedToClosedBook={(data) => {
           setAnalysisData(data);
           setStep("CLOSED_BOOK_1_3");

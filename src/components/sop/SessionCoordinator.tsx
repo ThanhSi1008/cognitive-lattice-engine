@@ -278,9 +278,14 @@ export function SessionCoordinator({ onDataMutated }: SessionCoordinatorProps = 
       {activeTab === "MIDDAY" && (
         <MiddaySession
           userId={userId}
+          sessionId={session?.id}
           s1CompletedAt={session?.s1_completed_at}
           incubationUnlockAt={session?.incubation_unlock_at}
           onUnlockedForAfternoon={() => setActiveTab("AFTERNOON")}
+          onFastForwardIncubation={async () => {
+            await loadSession();
+            setActiveTab("AFTERNOON");
+          }}
         />
       )}
 

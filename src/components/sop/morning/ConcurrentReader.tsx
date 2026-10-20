@@ -9,6 +9,8 @@ interface ConcurrentReaderProps {
   conceptTitle: string;
   sourceTextBlocks: string[];
   initialHypothesis: string;
+  initialCriticalAudit?: Partial<CriticalAuditData>;
+  initialAnalogicalMatrix?: AnalogicalDomainItem[];
   onProceedToClosedBook: (analysisData: {
     selfExplanation: string;
     criticalAudit: CriticalAuditData;
@@ -20,6 +22,8 @@ export function ConcurrentReader({
   conceptTitle,
   sourceTextBlocks,
   initialHypothesis,
+  initialCriticalAudit,
+  initialAnalogicalMatrix,
   onProceedToClosedBook,
 }: ConcurrentReaderProps) {
   const [selfExplanation, setSelfExplanation] = useState("");
@@ -52,48 +56,95 @@ export function ConcurrentReader({
     };
   }, [conceptTitle]);
 
-  const [criticalAudit, setCriticalAudit] = useState<CriticalAuditData>({
-    pico_frame: {
-      population_or_context: "Người học người lớn tự điều chỉnh",
-      intervention_or_mechanism: "Đan xen đa miền và lặp lại ngắt quãng FSRS",
-      comparison_baseline: "Học tập dồn cục theo khối đơn miền",
-      outcome_measured: "Tỷ lệ lưu giữ dài hạn và khả năng giải quyết vấn đề mới",
-    },
-    source_database: "PUBMED_MEDLINE",
-    study_design: "RCT",
-    risk_of_bias_assessment: {
-      tool_used: "COCHRANE_ROB_2",
-      rating_or_score: "Low Risk",
-      key_limitations: "Không thể làm mù đối tượng do tính chất can thiệp nhận thức",
-    },
-    falsifiability_condition: "Nếu việc đan xen làm giảm hiệu suất dài hạn trong bài test chuyển giao sau 30 ngày",
-    sample_size_and_replicability: "Cỡ mẫu N = 1200 qua ba lần tái lập độc lập tại hai trường đại học khác nhau",
-    counter_evidence_or_rival_model: "Nghiên cứu của Kornell (2008) chỉ ra đan xen gây khó khăn nhận thức ban đầu",
+  // Đồng bộ động Critical Audit theo chủ đề học liệu thực tế (thay vì gán cứng FSRS)
+  const [criticalAudit, setCriticalAudit] = useState<CriticalAuditData>(() => {
+    if (initialCriticalAudit) {
+      return {
+        pico_frame: {
+          population_or_context:
+            initialCriticalAudit.pico_frame?.population_or_context ||
+            `Bối cảnh ứng dụng của mô hình ${conceptTitle}`,
+          intervention_or_mechanism:
+            initialCriticalAudit.pico_frame?.intervention_or_mechanism ||
+            "Cơ chế tác động nguyên lý gốc và phản hồi cấp 2",
+          comparison_baseline:
+            initialCriticalAudit.pico_frame?.comparison_baseline ||
+            "Cách tiếp cận ngây thơ hoặc phản ứng tuyến tính cấp 1",
+          outcome_measured:
+            initialCriticalAudit.pico_frame?.outcome_measured ||
+            "Hiệu quả dài hạn và tính vững chắc của hệ thống",
+        },
+        source_database: initialCriticalAudit.source_database || "SCOPUS",
+        study_design: initialCriticalAudit.study_design || "THEORETICAL_MODEL",
+        risk_of_bias_assessment: {
+          tool_used:
+            initialCriticalAudit.risk_of_bias_assessment?.tool_used || "LOGIC_CONSISTENCY_CHECK",
+          rating_or_score:
+            initialCriticalAudit.risk_of_bias_assessment?.rating_or_score || "High Structural Validity",
+          key_limitations:
+            initialCriticalAudit.risk_of_bias_assessment?.key_limitations ||
+            "Giới hạn về bối cảnh lịch sử hoặc thiên kiến mẫu",
+        },
+        falsifiability_condition:
+          initialCriticalAudit.falsifiability_condition ||
+          `Điều kiện biên thực nghiệm làm sai lệch hoặc bác bỏ mô hình ${conceptTitle}`,
+        sample_size_and_replicability:
+          initialCriticalAudit.sample_size_and_replicability ||
+          "Dữ liệu kiểm chứng thực nghiệm và khả năng tái lập độc lập",
+        counter_evidence_or_rival_model:
+          initialCriticalAudit.counter_evidence_or_rival_model ||
+          "Mô hình đối lập và các nghiên cứu phản biện chỉ ra giới hạn lý thuyết",
+      };
+    }
+    return {
+      pico_frame: {
+        population_or_context: `Bối cảnh nghiên cứu: ${conceptTitle.split(/[:•–—-]/)[0].trim()}`,
+        intervention_or_mechanism: "Cơ chế tác động phi tuyến tính và phản hồi cấp độ hai",
+        comparison_baseline: "Tiếp cận trực quan tuyến tính thông thường",
+        outcome_measured: "Tính bền vững và khả năng dự báo kết quả dài hạn",
+      },
+      source_database: "SCOPUS",
+      study_design: "THEORETICAL_MODEL",
+      risk_of_bias_assessment: {
+        tool_used: "LOGIC_CONSISTENCY_CHECK",
+        rating_or_score: "High Structural Validity",
+        key_limitations: "Phụ thuộc vào các điều kiện tiên đề ban đầu của môi trường",
+      },
+      falsifiability_condition: `Bác bỏ nếu quan sát thấy hệ thống vận hành theo chiều hướng ngược lại trong môi trường kiểm chuẩn`,
+      sample_size_and_replicability: "Dữ liệu quan sát đa chu kỳ và các nghiên cứu trường hợp độc lập",
+      counter_evidence_or_rival_model: "Các trường phái lý thuyết đối trọng chỉ ra ngoại lệ và điểm đứt gãy",
+    };
   });
 
-  const [analogicalMatrix, setAnalogicalMatrix] = useState<AnalogicalDomainItem[]>([
-    {
-      domain_name: "Đầu tư Tài chính",
-      surface_features: "Cổ phiếu, thanh khoản thị trường, định giá",
-      first_order_naive_reaction: "Đu đỉnh khi giá tăng mạnh và hoảng loạn bán tháo",
-      second_order_systemic_mechanism: "Chu kỳ phản hồi tâm lý thị trường và biên an toàn nội tại",
-      structural_invariant_shared: "Phản hồi phi tuyến tính và cân bằng động",
-    },
-    {
-      domain_name: "Chính sách Công",
-      surface_features: "Thuế, trợ cấp, quy định hành chính",
-      first_order_naive_reaction: "Áp giá trần để kiểm soát lạm phát trước mắt",
-      second_order_systemic_mechanism: "Xuất hiện chợ đen và suy giảm sản lượng sản xuất",
-      structural_invariant_shared: "Phản hồi phi tuyến tính và cân bằng động",
-    },
-    {
-      domain_name: "Kiến trúc Phần mềm",
-      surface_features: "Microservices, cache, queue, circuit breaker",
-      first_order_naive_reaction: "Thêm cache vào mọi service để tăng tốc độ",
-      second_order_systemic_mechanism: "Mất tính nhất quán dữ liệu và sự cố cascade",
-      structural_invariant_shared: "Phản hồi phi tuyến tính và cân bằng động",
-    },
-  ]);
+  // Đồng bộ động Ma Trận Tương Tự Đa Miền
+  const [analogicalMatrix, setAnalogicalMatrix] = useState<AnalogicalDomainItem[]>(() => {
+    if (initialAnalogicalMatrix && initialAnalogicalMatrix.length >= 1) {
+      return initialAnalogicalMatrix;
+    }
+    return [
+      {
+        domain_name: "Tài chính & Đầu tư",
+        surface_features: "Thị trường vốn, chu kỳ kinh tế, biên an toàn",
+        first_order_naive_reaction: "Phản ứng cục bộ theo biến động thị giá trước mắt",
+        second_order_systemic_mechanism: "Cân bằng động thông qua cơ chế phản hồi thị trường",
+        structural_invariant_shared: "Cơ chế phản hồi phi tuyến tính và bảo toàn cấu trúc",
+      },
+      {
+        domain_name: "Kiến trúc Hệ thống",
+        surface_features: "Phân tán, độ trễ, chịu lỗi, mạch ngắt",
+        first_order_naive_reaction: "Tối ưu hóa cục bộ từng thành phần đơn lẻ",
+        second_order_systemic_mechanism: "Sự cố lan truyền cascade và cân bằng tải hệ thống",
+        structural_invariant_shared: "Cơ chế phản hồi phi tuyến tính và bảo toàn cấu trúc",
+      },
+      {
+        domain_name: "Sinh thái Học & Tiến hóa",
+        surface_features: "Chọn lọc tự nhiên, thích nghi, cân bằng loài",
+        first_order_naive_reaction: "Can thiệp loại bỏ một loài nhằm bảo vệ mục tiêu trước mắt",
+        second_order_systemic_mechanism: "Biến đổi chuỗi thức ăn và mất cân bằng sinh thái vĩ mô",
+        structural_invariant_shared: "Cơ chế phản hồi phi tuyến tính và bảo toàn cấu trúc",
+      },
+    ];
+  });
 
   // RULE-01: Cấm tô sáng thụ động. Nếu người dùng bôi đen văn bản, hiển thị nhắc nhở chuyển sang tự giải thích.
   const handleSelection = () => {
@@ -178,75 +229,73 @@ export function ConcurrentReader({
             <div className="flex items-center justify-between text-xs">
               <span className="font-semibold text-purple-300 flex items-center gap-1.5 font-mono text-[11px]">
                 <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                Sơ Đồ Tri Thức Nền Kích Hoạt (Prior Schemas)
+                LƯỢC ĐỒ TRI THỨC TIỀN NGHIỆM ĐÃ KÍCH HOẠT (Prior Schemas)
               </span>
-              <span className="text-[10px] font-mono text-slate-500">Mục 4.2 arXiv:2025</span>
+              <span className="text-[10px] text-slate-500 font-mono">Mục 4.2 arXiv:2025</span>
             </div>
 
             {isLoadingPrior ? (
-              <div className="text-[11px] font-mono text-slate-500 italic">
-                Đang quét vector các sơ đồ tri thức nền liên quan...
+              <div className="text-[11px] text-slate-500 font-mono py-2 animate-pulse">
+                Đang quét các nút tri thức liên quan...
               </div>
             ) : priorZettels.length > 0 ? (
-              <div className="grid grid-cols-1 gap-2">
-                {priorZettels.map((z) => (
+              <div className="flex flex-col gap-1.5">
+                {priorZettels.map((z: any) => (
                   <div
                     key={z.zettel_uid}
-                    className="p-2.5 rounded bg-purple-950/20 border border-purple-800/40 text-xs flex flex-col gap-1 hover:border-purple-600 transition"
+                    className="p-2.5 rounded bg-purple-950/20 border border-purple-900/40 text-xs text-slate-300 flex flex-col gap-0.5"
                   >
-                    <div className="flex items-center justify-between text-[10px] font-mono">
-                      <span className="text-cyan-400 font-bold">[[{z.zettel_uid}]]</span>
-                      <span className="px-1.5 py-0.2 bg-slate-900 text-slate-400 rounded">
-                        {z.domain_category}
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[10px] text-purple-400 font-bold">
+                        [[{z.zettel_uid.slice(-6)}]]
                       </span>
+                      <span className="text-[10px] text-slate-500 font-mono">{z.domain_category}</span>
                     </div>
-                    <div className="font-semibold text-slate-200 line-clamp-1">{z.atomic_title}</div>
-                    <div className="text-[11px] text-slate-400 line-clamp-2 italic">
-                      {z.body_text}
-                    </div>
+                    <div className="font-medium text-slate-200 line-clamp-1">{z.atomic_title}</div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-[11px] text-slate-500 italic p-2 bg-slate-900/40 rounded border border-slate-800/60">
-                Chưa có Zettel cũ nào liên quan trực tiếp. Khái niệm này sẽ là hạt mầm tri thức mới cho hộp phiếu.
+              <div className="p-2.5 rounded bg-slate-900/40 border border-slate-800 text-[11px] text-slate-400">
+                Chưa có Zettel tiền nghiệm trực tiếp về chủ đề này. Tri thức mới sẽ tạo nút tiên phong (Pioneer Node) trong mạng lưới.
               </div>
             )}
           </div>
         </div>
 
-        {/* Right Column: Mandatory Analysis Sidebar */}
-        <div className="lg:col-span-7 flex flex-col gap-5 max-h-[800px] overflow-y-auto pr-1">
-          {/* Đối chiếu với dự đoán ban đầu */}
+        {/* Right Column: Active Construction Widgets */}
+        <div className="lg:col-span-7 flex flex-col gap-6">
+          {/* Tự giải thích (Self-Explanation Prompt) */}
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-xs font-semibold text-cyan-400">
-              <Lightbulb className="w-4 h-4" />
-              <span>Khung Tự Giải Thích & Đối Chiếu Giả Thuyết Ban Đầu</span>
-            </div>
-
-            <div className="bg-slate-950 p-3 rounded border border-slate-800/80 text-xs text-slate-400">
-              <span className="text-slate-500 font-medium">Dự đoán của bạn ở Cổng Đoán Trước: </span>
-              <em>&ldquo;{initialHypothesis}&rdquo;</em>
-            </div>
-
-            <div>
-              <label className="text-xs text-slate-300">
-                Tại sao nguyên lý này đúng? Dự đoán ban đầu của bạn đúng ở đâu và sai lệch/bỏ sót điểm mấu chốt nào?
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-semibold text-white flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-amber-400" />
+                <span>Tự Giải Thích Bằng Lời Của Bạn (Self-Explanation Prompts) *</span>
               </label>
-              <textarea
-                rows={3}
-                value={selfExplanation}
-                onChange={(e) => setSelfExplanation(e.target.value)}
-                placeholder="Viết tự giải thích đối chiếu (tối thiểu 30 ký tự)..."
-                className="w-full mt-1.5 bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 resize-none leading-relaxed"
-              />
+              <span
+                className={`text-xs font-mono ${
+                  selfExplanation.trim().length >= 30 ? "text-emerald-400" : "text-slate-500"
+                }`}
+              >
+                {selfExplanation.trim().length}/30 ký tự
+              </span>
             </div>
+            <p className="text-xs text-slate-400">
+              Hãy trả lời: <em>&quot;Tại sao nguyên lý này lại hoạt động như vậy? Nó khác gì với trực giác thông thường của tôi?&quot;</em>
+            </p>
+            <textarea
+              rows={4}
+              value={selfExplanation}
+              onChange={(e) => setSelfExplanation(e.target.value)}
+              placeholder="Viết diễn giải cá nhân của bạn ở đây... Tuyệt đối không sao chép nguyên văn văn bản bên trái."
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 leading-relaxed font-sans"
+            />
           </div>
 
-          {/* Critical Audit Widget */}
+          {/* Phản biện Học thuật (Critical Audit) */}
           <CriticalAuditWidget data={criticalAudit} onChange={setCriticalAudit} />
 
-          {/* Analogical Matrix Widget */}
+          {/* Ma trận Tương tự Đa miền (Analogical Matrix) */}
           <AnalogicalMatrixWidget domains={analogicalMatrix} onChange={setAnalogicalMatrix} />
         </div>
       </div>

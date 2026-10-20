@@ -64,6 +64,8 @@ export function ZettelkastenNetworkGraph({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDomain, setSelectedDomain] = useState("ALL");
   const [graphStats, setGraphStats] = useState({ nodesCount: 0, edgesCount: 0, isClustered: false });
+  const [isDemoCluster, setIsDemoCluster] = useState(false);
+  const [realCount, setRealCount] = useState<number>(0);
 
   const handleExportVault = async () => {
     setIsExporting(true);
@@ -97,11 +99,14 @@ export function ZettelkastenNetworkGraph({
 
       if (!initialNodes || initialNodes.length === 0) {
         try {
-          const res = await fetch("/api/telemetry");
+          const res = await fetch(`/api/telemetry${isDemoCluster ? "?demoCluster=true" : ""}`);
           if (res.ok) {
             const json = await res.json();
             nodes = json.networkGraph?.nodes || [];
             edges = json.networkGraph?.edges || [];
+            if (typeof json.networkGraph?.realCount === "number") {
+              setRealCount(json.networkGraph.realCount);
+            }
           }
         } catch (err) {
           console.error("Lỗi nạp đồ thị:", err);
@@ -217,7 +222,7 @@ export function ZettelkastenNetworkGraph({
         cyRef.current = null;
       }
     };
-  }, [initialNodes, initialEdges, refreshTrigger]);
+  }, [initialNodes, initialEdges, refreshTrigger, isDemoCluster]);
 
   // Bộ lọc tìm kiếm
   useEffect(() => {
@@ -330,6 +335,21 @@ export function ZettelkastenNetworkGraph({
               <Maximize2 className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Nút Chuyển Đổi Xem Thật / Mô Phỏng 50+ Nút */}
+          <button
+            type="button"
+            onClick={() => setIsDemoCluster((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-xs font-mono transition cursor-pointer ${
+              isDemoCluster
+                ? "bg-purple-950/80 border-purple-500 text-purple-200"
+                : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
+            }`}
+            title="Chuyển đổi giữa thẻ Zettel thật và cụm mô phỏng 50+ nút"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+            <span>{isDemoCluster ? "Xem: Demo 50+ Zettels" : `Cụm Thật (${realCount} Zettels)`}</span>
+          </button>
 
           {/* Nút Xuất Hộp Phiếu Local-First */}
           <button

@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     const db = await getDb();
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId") || "00000000-0000-0000-0000-000000000001";
+    const demoCluster = searchParams.get("demoCluster") === "true";
 
     // 1. Lấy số lượng Zettels xuất bản trong 7 ngày qua
     const velocityRes = await db.query<{ count: string }>(
@@ -154,8 +155,11 @@ export async function GET(request: NextRequest) {
       },
     }));
 
-    // Nếu cơ sở dữ liệu mới tinh chưa đủ node, tạo dữ liệu mẫu minh họa mạng lưới đa miền với > 50 nút để kích hoạt clustering
-    if (nodes.length < 5) {
+    // Nếu demoCluster = true HOẶC database hoàn toàn trống (nodes.length === 0), tạo 52 nút minh họa
+    // Ngược lại, nếu người dùng có ít nhất 1 node thật (nodes.length >= 1), LUÔN LUÔN trả về node thật của người dùng
+    const isDemoCluster = demoCluster || nodes.length === 0;
+
+    if (isDemoCluster) {
       const domains = [
         "Cognitive Science",
         "Financial Engineering",
@@ -219,6 +223,8 @@ export async function GET(request: NextRequest) {
         totalNodes: nodes.length,
         totalEdges: edges.length,
         hasClusteringTriggered: nodes.length >= 50,
+        isDemoCluster,
+        realCount: zettelsRes.rows.length,
       },
     });
   } catch (error: any) {

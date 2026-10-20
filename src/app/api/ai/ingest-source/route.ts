@@ -1,11 +1,76 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PRESET_MENTAL_MODELS } from "@/lib/constants/presetMentalModels";
+import { parseExternalAiResponse } from "@/lib/validations/ingestSchema";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { mode, presetId, customTitle, customAuthor, customYear, customText, customDomain } = body;
+    const {
+      mode,
+      presetId,
+      customTitle,
+      customAuthor,
+      customYear,
+      customText,
+      customDomain,
+      externalAiRawText,
+      moduleIndex,
+      selectedModule,
+    } = body;
 
+    // 1. Chế độ nạp từ Frontier AI (Gemini 4 Argon High Thinking)
+    if (mode === "EXTERNAL_AI") {
+      if (selectedModule) {
+        // Nạp trực tiếp một module đã chọn từ roadmap
+        return NextResponse.json({
+          title: selectedModule.title,
+          author: selectedModule.citation.author,
+          year: selectedModule.citation.year,
+          domain: selectedModule.domain || body.domain || "Cognitive Science",
+          fullText: (selectedModule.source_blocks || []).join("\n\n"),
+          sourceBlocks: selectedModule.source_blocks || [],
+          suggestedPrimaryClaim: selectedModule.activation_context,
+          criticalAuditScaffold: selectedModule.critical_audit_scaffold,
+          analogicalMatrixScaffold: selectedModule.analogical_matrix_scaffold,
+          citation: selectedModule.citation,
+        });
+      }
+
+      if (!externalAiRawText || !externalAiRawText.trim()) {
+        return NextResponse.json(
+          { error: "Vui lòng dán nội dung trả lời từ Gemini 4 Argon." },
+          { status: 400 }
+        );
+      }
+
+      const parseResult = parseExternalAiResponse(externalAiRawText);
+      if (!parseResult.success || !parseResult.data) {
+        return NextResponse.json({ error: parseResult.error }, { status: 422 });
+      }
+
+      const payload = parseResult.data;
+      const targetIdx = typeof moduleIndex === "number" ? moduleIndex : 0;
+      const activeMod = payload.roadmap[targetIdx] || payload.roadmap[0];
+
+      return NextResponse.json({
+        success: true,
+        payload,
+        activeModule: {
+          title: activeMod.title,
+          author: activeMod.citation.author,
+          year: activeMod.citation.year,
+          domain: payload.domain,
+          fullText: (activeMod.source_blocks || []).join("\n\n"),
+          sourceBlocks: activeMod.source_blocks || [],
+          suggestedPrimaryClaim: activeMod.activation_context,
+          criticalAuditScaffold: activeMod.critical_audit_scaffold,
+          analogicalMatrixScaffold: activeMod.analogical_matrix_scaffold,
+          citation: activeMod.citation,
+        },
+      });
+    }
+
+    // 2. Chế độ Thư viện Mẫu (Preset)
     if (mode === "PRESET") {
       const model = PRESET_MENTAL_MODELS[presetId || "HOWARD_MARKS_SECOND_ORDER"];
       if (!model) {
@@ -29,6 +94,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // 3. Chế độ Tự Nạp Văn Bản Học Thuật (Custom / DOI)
     if (mode === "CUSTOM") {
       if (!customText || !customText.trim()) {
         return NextResponse.json({ error: "Nội dung tài liệu học thuật không được để trống." }, { status: 400 });
@@ -37,7 +103,7 @@ export async function POST(req: NextRequest) {
       const text = customText.trim();
       const rawParagraphs = text.split(/\n\s*\n/).map((p: string) => p.trim()).filter(Boolean);
 
-      // Group into 2 to 5 meaningful blocks
+      // Nhóm thành 2 đến 5 khối luận điểm
       const sourceBlocks: string[] = [];
       if (rawParagraphs.length <= 4) {
         sourceBlocks.push(...rawParagraphs);
@@ -78,7 +144,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ error: "Chế độ nạp tài liệu không hợp lệ. Chỉ chấp nhận PRESET hoặc CUSTOM." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Chế độ nạp tài liệu không hợp lệ. Chấp nhận: EXTERNAL_AI, PRESET hoặc CUSTOM." },
+      { status: 400 }
+    );
   } catch (err: any) {
     console.error("[API/AI/INGEST-SOURCE]", err);
     return NextResponse.json({ error: "Lỗi nạp và phân đoạn tài liệu: " + err.message }, { status: 500 });

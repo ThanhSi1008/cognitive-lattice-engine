@@ -117,6 +117,17 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Tua nhanh khóa ủ nhận thức 4 giờ (Simulate Incubation Complete)
+    if (body.simulateIncubationComplete) {
+      await db.query(
+        `UPDATE learning_sessions 
+         SET s1_completed_at = NOW() - INTERVAL '4 hours 5 minutes',
+             incubation_unlock_at = NOW() - INTERVAL '5 minutes'
+         WHERE id = $1`,
+        [targetSessionId]
+      );
+    }
+
     // Cập nhật s1_completed_at
     if (s1_completed_at !== undefined) {
       const s1Time = s1_completed_at ? new Date(s1_completed_at) : null;

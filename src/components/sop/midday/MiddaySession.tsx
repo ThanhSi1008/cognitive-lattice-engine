@@ -6,16 +6,20 @@ import { FleetingNotesInbox, FleetingNoteItem } from "./FleetingNotesInbox";
 
 interface MiddaySessionProps {
   userId?: string;
+  sessionId?: string;
   s1CompletedAt?: Date | string | null;
   incubationUnlockAt?: Date | string | null;
   onUnlockedForAfternoon?: () => void;
+  onFastForwardIncubation?: () => void;
 }
 
 export function MiddaySession({
   userId = "00000000-0000-0000-0000-000000000001",
+  sessionId,
   s1CompletedAt,
   incubationUnlockAt,
   onUnlockedForAfternoon,
+  onFastForwardIncubation,
 }: MiddaySessionProps) {
   const [notes, setNotes] = useState<FleetingNoteItem[]>([]);
 
@@ -63,9 +67,12 @@ export function MiddaySession({
     <div className="flex flex-col gap-8">
       {/* Khóa Khoảng Nghỉ Sinh Học 4 Giờ */}
       <NeuralIncubationLock
+        userId={userId}
+        sessionId={sessionId}
         s1CompletedAt={s1CompletedAt}
         incubationUnlockAt={incubationUnlockAt}
         onUnlocked={onUnlockedForAfternoon}
+        onFastForward={onFastForwardIncubation || onUnlockedForAfternoon}
       />
 
       {/* Hộp Đệm Ghi Chú Thoáng Qua 48h */}
