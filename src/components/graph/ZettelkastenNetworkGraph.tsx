@@ -12,6 +12,7 @@ import {
   Sparkles,
   Layers,
   Download,
+  Upload,
   X,
   FileText,
   Link2,
@@ -66,6 +67,50 @@ export function ZettelkastenNetworkGraph({
   const [graphStats, setGraphStats] = useState({ nodesCount: 0, edgesCount: 0, isClustered: false });
   const [isDemoCluster, setIsDemoCluster] = useState(false);
   const [realCount, setRealCount] = useState<number>(0);
+  const [isImporting, setIsImporting] = useState(false);
+  const [internalRefresh, setInternalRefresh] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleImportVaultFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const content = event.target?.result as string;
+          const json = JSON.parse(content);
+
+          const res = await fetch("/api/vault/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(json),
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.error || "Lỗi khôi phục hộp phiếu.");
+          }
+
+          const result = await res.json();
+          alert(`✅ ${result.message}`);
+          setIsDemoCluster(false);
+          setInternalRefresh((prev) => prev + 1);
+        } catch (err: any) {
+          alert(`❌ Lỗi nhập hộp phiếu: ${err.message}`);
+        } finally {
+          setIsImporting(false);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+      };
+      reader.readAsText(file);
+    } catch (e: any) {
+      alert(`❌ Lỗi đọc tệp: ${e.message}`);
+      setIsImporting(false);
+    }
+  };
 
   const handleExportVault = async () => {
     setIsExporting(true);
@@ -222,7 +267,7 @@ export function ZettelkastenNetworkGraph({
         cyRef.current = null;
       }
     };
-  }, [initialNodes, initialEdges, refreshTrigger, isDemoCluster]);
+  }, [initialNodes, initialEdges, refreshTrigger, isDemoCluster, internalRefresh]);
 
   // Bộ lọc tìm kiếm
   useEffect(() => {
@@ -361,6 +406,25 @@ export function ZettelkastenNetworkGraph({
           >
             <Download className="w-3.5 h-3.5" />
             <span>{isExporting ? "Đang xuất..." : "Xuất Hộp Phiếu"}</span>
+          </button>
+
+          {/* Nút Nhập / Khôi Phục Hộp Phiếu Local-First */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImportVaultFile}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isImporting}
+            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-950 hover:bg-emerald-900 border border-emerald-800 text-emerald-300 rounded-lg text-xs font-mono transition cursor-pointer disabled:opacity-50"
+            title="Khôi phục hộp phiếu Zettelkasten từ tệp JSON sao lưu"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>{isImporting ? "Đang nhập..." : "Nhập Hộp Phiếu"}</span>
           </button>
         </div>
       </div>

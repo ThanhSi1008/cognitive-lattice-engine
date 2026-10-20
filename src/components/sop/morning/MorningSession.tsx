@@ -72,8 +72,9 @@ export function MorningSession({
   const [frontierRawInput, setFrontierRawInput] = useState("");
   const [frontierParseError, setFrontierParseError] = useState<string | null>(null);
   const [importedRoadmap, setImportedRoadmap] = useState<CleExternalAiPayload | null>(null);
+  const [completedModuleIds, setCompletedModuleIds] = useState<string[]>([]);
 
-  // Khôi phục roadmap từ localStorage nếu có
+  // Khôi phục roadmap và tiến độ hoàn thành từ localStorage & backend telemetry
   useEffect(() => {
     try {
       const stored = localStorage.getItem("cle_active_roadmap");
@@ -83,8 +84,27 @@ export function MorningSession({
           setImportedRoadmap(parsed);
         }
       }
+      const storedCompleted = localStorage.getItem("cle_completed_module_ids");
+      if (storedCompleted) {
+        setCompletedModuleIds(JSON.parse(storedCompleted));
+      }
     } catch {}
-  }, []);
+
+    // Đồng bộ từ Backend API /api/telemetry
+    fetch(`/api/telemetry?userId=${userId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.userCognitiveSettings?.completedModuleIds?.length > 0) {
+          setCompletedModuleIds((prev) =>
+            Array.from(new Set([...prev, ...data.userCognitiveSettings.completedModuleIds]))
+          );
+        }
+        if (data.userCognitiveSettings?.activeRoadmap) {
+          setImportedRoadmap((prev) => prev || data.userCognitiveSettings.activeRoadmap);
+        }
+      })
+      .catch(() => {});
+  }, [userId]);
 
   // State Trình tạo truy vấn học thuật PICO
   const [picoTopic, setPicoTopic] = useState("");
@@ -130,6 +150,9 @@ export function MorningSession({
     setActiveConcept({
       title: module.title,
       context: `${module.citation.author} (${module.citation.year}) • ${importedRoadmap?.domain || "Frontier Cognitive Domain"}`,
+      activationContext: module.activation_context,
+      domain: importedRoadmap?.domain || "Financial Engineering",
+      moduleId: module.module_id,
       sourceBlocks: module.source_blocks,
       citation: {
         author: module.citation.author,
@@ -173,6 +196,9 @@ export function MorningSession({
   const [activeConcept, setActiveConcept] = useState<{
     title: string;
     context: string;
+    activationContext?: string;
+    domain?: string;
+    moduleId?: string;
     sourceBlocks: string[];
     citation?: CitationData;
     criticalAuditScaffold?: any;
@@ -180,6 +206,9 @@ export function MorningSession({
   }>({
     title: "Tư Duy Cấp Độ Hai và Phân Tích Hệ Quả Ngoại Vi Trong Môi Trường Phức Hợp",
     context: "Howard Marks (2011) • Behavioral Economics & Risk Architecture",
+    activationContext: "Tại sao việc chỉ suy nghĩ theo phản xạ cấp độ một lại dẫn đến các quyết định sai lầm trầm trọng trong hệ thống phức hợp?",
+    domain: "Behavioral Economics",
+    moduleId: "PRESET_MOD_01",
     sourceBlocks: [
       `Tư duy cấp độ một đơn giản và hời hợt, chỉ nhìn vào kết quả trực tiếp đầu tiên. Tư duy cấp độ một nói: "Công ty này tốt, triển vọng tăng trưởng cao, hãy mua cổ phiếu". Tư duy cấp độ hai nói: "Công ty này tốt, nhưng tất cả mọi người trên thị trường đều đã biết nó tốt và định giá quá cao, hãy bán ra".`,
       `Tư duy cấp độ hai phức tạp và đa chiều hơn nhiều. Bạn không chỉ phải xem xét kết quả trực tiếp của hành động mà còn phải phân tích: Điều gì sẽ xảy ra tiếp theo sau khi mọi người phản ứng với hành vi của bạn? Xác suất của các kịch bản ngoại vi là bao nhiêu? Thị trường đang phản ánh sự đồng thuận sai lầm ở đâu?`,
@@ -482,38 +511,55 @@ export function MorningSession({
                 </div>
 
                 <div className="grid grid-cols-1 gap-3">
-                  {importedRoadmap.roadmap.map((mod, idx) => (
-                    <div
-                      key={mod.module_id || idx}
-                      className="p-4 rounded-xl border border-slate-800 bg-slate-950/70 hover:border-cyan-500/50 transition flex flex-col md:flex-row md:items-center justify-between gap-4 group"
-                    >
-                      <div className="flex flex-col gap-1.5 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 bg-cyan-950/80 border border-cyan-800 text-cyan-400 font-mono text-[10px] font-bold rounded">
-                            DAY {mod.day || idx + 1}
-                          </span>
-                          <span className="text-[11px] font-mono text-slate-400">
-                            {mod.citation.author} ({mod.citation.year}) • {mod.citation.title}
-                          </span>
-                        </div>
-                        <h4 className="text-xs font-bold text-white group-hover:text-cyan-300 transition">
-                          {mod.title}
-                        </h4>
-                        <p className="text-[11px] text-slate-400 line-clamp-2 italic">
-                          &quot;{mod.activation_context}&quot;
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleSelectRoadmapModule(mod)}
-                        className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 shadow-md shadow-cyan-500/10"
+                  {importedRoadmap.roadmap.map((mod, idx) => {
+                    const isCompleted = completedModuleIds.includes(mod.module_id) || completedModuleIds.includes(mod.title);
+                    return (
+                      <div
+                        key={mod.module_id || idx}
+                        className={`p-4 rounded-xl border transition flex flex-col md:flex-row md:items-center justify-between gap-4 group ${
+                          isCompleted
+                            ? "bg-emerald-950/20 border-emerald-800/80"
+                            : "bg-slate-950/70 border-slate-800 hover:border-cyan-500/50"
+                        }`}
                       >
-                        <span>Học Bài Này (Vào Cổng Đoán Trước)</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex flex-col gap-1.5 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 bg-cyan-950/80 border border-cyan-800 text-cyan-400 font-mono text-[10px] font-bold rounded">
+                              DAY {mod.day || idx + 1}
+                            </span>
+                            {isCompleted && (
+                              <span className="px-2 py-0.5 bg-emerald-500/20 border border-emerald-500 text-emerald-400 font-mono text-[10px] font-bold rounded flex items-center gap-1">
+                                <Check className="w-3 h-3 text-emerald-400" />
+                                <span>✓ Đã học</span>
+                              </span>
+                            )}
+                            <span className="text-[11px] font-mono text-slate-400">
+                              {mod.citation.author} ({mod.citation.year}) • {mod.citation.title}
+                            </span>
+                          </div>
+                          <h4 className="text-xs font-bold text-white group-hover:text-cyan-300 transition">
+                            {mod.title}
+                          </h4>
+                          <p className="text-[11px] text-slate-400 line-clamp-2 italic">
+                            &quot;{mod.activation_context}&quot;
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSelectRoadmapModule(mod)}
+                          className={`px-4 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 shadow-md ${
+                            isCompleted
+                              ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20"
+                              : "bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-cyan-500/10"
+                          }`}
+                        >
+                          <span>{isCompleted ? "Ôn Lại Bài Này" : "Học Bài Này (Vào Cổng Đoán Trước)"}</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -835,6 +881,7 @@ export function MorningSession({
       <PreReadingGate
         conceptTitle={activeConcept.title}
         conceptContext={activeConcept.context}
+        activationContext={activeConcept.activationContext}
         sourceTextSnippet={activeConcept.sourceBlocks.join(" ")}
         onUnlocked={async (hyp) => {
           setHypothesis(hyp);
@@ -882,7 +929,10 @@ export function MorningSession({
         // Lưu Literature Note qua API
         const notePayload = {
           user_id: userId,
-          source_citation: citation,
+          source_citation: {
+            ...citation,
+            domain: activeConcept.domain,
+          },
           paraphrased_summary: summary,
           critical_audit: analysisData?.criticalAudit,
           analogical_matrix: analysisData?.analogicalMatrix,
@@ -897,6 +947,33 @@ export function MorningSession({
         if (!res.ok) {
           const err = await res.json();
           throw new Error(err.error || "Lỗi lưu ghi chú");
+        }
+
+        // Cập nhật module hoàn thành vào completedModuleIds
+        if (activeConcept.moduleId) {
+          const nextCompleted = Array.from(new Set([...completedModuleIds, activeConcept.moduleId]));
+          setCompletedModuleIds(nextCompleted);
+          try {
+            localStorage.setItem("cle_completed_module_ids", JSON.stringify(nextCompleted));
+            await fetch("/api/telemetry", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId,
+                completedModuleIds: nextCompleted,
+                activeRoadmap: importedRoadmap,
+              }),
+            });
+          } catch (e) {
+            console.error("Lỗi đồng bộ completedModuleIds:", e);
+          }
+        }
+
+        // Lưu domain vào localStorage để Phiên Chiều (AtomicZettelStudio) tự động điền sẵn
+        if (activeConcept.domain) {
+          try {
+            localStorage.setItem("cle_last_studied_domain", activeConcept.domain);
+          } catch {}
         }
 
         const completedAt = new Date();

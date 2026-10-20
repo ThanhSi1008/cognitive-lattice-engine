@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { countWords } from "@/lib/validations";
 import { TipTapEditor } from "@/components/editor/TipTapEditor";
 import { BiDirectionalLinkEngine, ZettelLinkItem } from "./BiDirectionalLinkEngine";
@@ -50,11 +50,31 @@ export function AtomicZettelStudio({
 
   const [zettelUid] = useState(generateZettelUid());
   const [atomicTitle, setAtomicTitle] = useState("");
-  const [domainCategory, setDomainCategory] = useState("Cognitive Engineering");
+  const [domainCategory, setDomainCategory] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("cle_last_studied_domain");
+      if (saved && saved.trim()) return saved.trim();
+    }
+    return (literatureNote as any)?.source_citation?.domain || "Cognitive Science";
+  });
   const [bodyText, setBodyText] = useState("");
   const [links, setLinks] = useState<ZettelLinkItem[]>([]);
   const [cards, setCards] = useState<PerturbationCardItem[]>([]);
   const [isPublishing, setIsPublishing] = useState(false);
+
+  // Đồng bộ domain từ literatureNote hoặc localStorage khi tải phiên chiều
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("cle_last_studied_domain");
+      if (saved && saved.trim()) {
+        setDomainCategory(saved.trim());
+        return;
+      }
+    }
+    if ((literatureNote as any)?.source_citation?.domain) {
+      setDomainCategory((literatureNote as any).source_citation.domain);
+    }
+  }, [literatureNote]);
 
   // Socratic Mentor Evaluation State
   const [socraticResult, setSocraticResult] = useState<SocraticProbeResult | null>(null);

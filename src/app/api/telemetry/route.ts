@@ -26,9 +26,11 @@ export async function GET(request: NextRequest) {
     // 2. Lấy dữ liệu cấu hình nhận thức cá nhân (user_cognitive_settings)
     let userWeights = DEFAULT_FSRS5_WEIGHTS;
     let desiredRetention = 0.90;
+    let activeRoadmap = null;
+    let completedModuleIds: string[] = [];
     try {
       const settingsRes = await db.query(
-        `SELECT desired_retention, fsrs_weights FROM user_cognitive_settings WHERE user_id = $1`,
+        `SELECT desired_retention, fsrs_weights, active_roadmap, completed_module_ids FROM user_cognitive_settings WHERE user_id = $1`,
         [userId]
       );
       if (settingsRes.rows.length > 0) {
@@ -42,6 +44,13 @@ export async function GET(request: NextRequest) {
         if (Array.isArray(w) && w.length === 19) {
           userWeights = w.map(Number);
         }
+        activeRoadmap = settingsRes.rows[0].active_roadmap || null;
+        if (typeof activeRoadmap === "string") {
+          try {
+            activeRoadmap = JSON.parse(activeRoadmap);
+          } catch {}
+        }
+        completedModuleIds = settingsRes.rows[0].completed_module_ids || [];
       }
     } catch {
       // Dùng mặc định
@@ -211,6 +220,8 @@ export async function GET(request: NextRequest) {
       userCognitiveSettings: {
         desiredRetention,
         weights: userWeights,
+        activeRoadmap,
+        completedModuleIds,
       },
       decisionCalibration: {
         averageBrierScore: avgBrier,
@@ -237,26 +248,31 @@ export async function PATCH(request: NextRequest) {
     const db = await getDb();
     const body = await request.json();
     const userId = body.userId || "00000000-0000-0000-0000-000000000001";
-    const desiredRetention = Number(body.desiredRetention) || 0.90;
+    const desiredRetention = body.desiredRetention !== undefined ? Number(body.desiredRetention) : 0.90;
     const weights = body.weights || DEFAULT_FSRS5_WEIGHTS;
+    const activeRoadmap = body.activeRoadmap !== undefined ? (body.activeRoadmap ? JSON.stringify(body.activeRoadmap) : null) : null;
+    const completedModuleIds = body.completedModuleIds !== undefined ? body.completedModuleIds : null;
 
     await db.query(
-      `INSERT INTO user_cognitive_settings (user_id, desired_retention, fsrs_weights, updated_at)
-       VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (user_id) DO UPDATE
-       SET desired_retention = EXCLUDED.desired_retention,
-           fsrs_weights = COALESCE(EXCLUDED.fsrs_weights, user_cognitive_settings.fsrs_weights),
-           updated_at = NOW()`,
-      [userId, desiredRetention, JSON.stringify(weights)]
+      `INSERT INTO user_cognitive_settings (
+        user_id, desired_retention, fsrs_weights, active_roadmap, completed_module_ids, updated_at
+      ) VALUES ($1, $2, $3, $4, COALESCE($5, '{}'), NOW())
+      ON CONFLICT (user_id) DO UPDATE
+      SET desired_retention = COALESCE($2, user_cognitive_settings.desired_retention),
+          fsrs_weights = COALESCE($3, user_cognitive_settings.fsrs_weights),
+          active_roadmap = COALESCE($4, user_cognitive_settings.active_roadmap),
+          completed_module_ids = COALESCE($5, user_cognitive_settings.completed_module_ids),
+          updated_at = NOW()`,
+      [userId, desiredRetention, JSON.stringify(weights), activeRoadmap, completedModuleIds]
     );
 
     return NextResponse.json({
       success: true,
       desiredRetention,
       weights,
-      message: `Đã cập nhật mục tiêu lưu giữ R = ${Math.round(desiredRetention * 100)}% (${
-        desiredRetention === 0.85 ? "Ma sát cao" : "Tiêu chuẩn"
-      }).`,
+      activeRoadmap: body.activeRoadmap,
+      completedModuleIds,
+      message: `Đã cập nhật cấu hình nhận thức thành công.`,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 400 });

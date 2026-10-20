@@ -290,7 +290,83 @@ CREATE TABLE IF NOT EXISTS user_cognitive_settings (
     user_id UUID PRIMARY KEY,
     desired_retention FLOAT NOT NULL DEFAULT 0.90 CHECK (desired_retention BETWEEN 0.80 AND 0.95),
     fsrs_weights JSONB NOT NULL,
+    active_roadmap JSONB,
+    completed_module_ids TEXT[] NOT NULL DEFAULT '{}',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Đảm bảo tương thích nếu bảng đã tồn tại từ trước
+DO $$ BEGIN
+    ALTER TABLE user_cognitive_settings ADD COLUMN IF NOT EXISTS active_roadmap JSONB;
+    ALTER TABLE user_cognitive_settings ADD COLUMN IF NOT EXISTS completed_module_ids TEXT[] NOT NULL DEFAULT '{}';
+EXCEPTION
+    WHEN duplicate_column THEN null;
+END $$;
+
+-- 10. Dữ Liệu Khởi Tạo Hạt Giống Nền Tảng (Seed Nodes cho Cold-Start)
+DO $$
+BEGIN
+    -- Chèn 3 Zettel hạt giống mẫu ở trạng thái DRAFT
+    INSERT INTO permanent_zettels (
+        zettel_uid, user_id, atomic_title, body_text, word_count, domain_category, state
+    ) VALUES 
+        (
+            '20261019000001',
+            '00000000-0000-0000-0000-000000000001',
+            'Ngắt Mạch Nợ Nhận Thức Bảo Toàn Khả Năng Xử Lý Thông Tin',
+            'Khi tỷ lệ áp lực ôn tập DRLI vượt ngưỡng tới hạn 1.5, toàn bộ luồng nạp kiến thức mới bắt buộc phải bị chặn đứng. Não bộ con người có dung lượng bộ nhớ làm việc hữu hạn. Việc tiếp tục nhồi nhét tài liệu trong tình trạng nợ thẻ FSRS trầm trọng sẽ kích hoạt ảo tưởng thông thạo và làm xói mòn cấu trúc tri thức bền vững đã xây dựng trước đó.',
+            120,
+            'Cognitive Science',
+            'DRAFT'
+        ),
+        (
+            '20261019000002',
+            '00000000-0000-0000-0000-000000000001',
+            'Phản Hồi Phi Tuyến Tính Và Bẫy Độ Trễ Trong Hệ Thống Phức Tạp',
+            'Trong bất kỳ hệ thống thích ứng phức tạp nào, các can thiệp cục bộ luôn tạo ra phản ứng thích nghi của các tác tử khác. Sự chậm trễ của các vòng phản hồi cấp hai thường khiến người quan sát ngây thơ lầm tưởng về hiệu quả tức thời của chính sách, dẫn đến những thảm họa điều hành không thể cứu vãn khi độ trễ hệ thống bộc phát.',
+            120,
+            'System Architecture',
+            'DRAFT'
+        ),
+        (
+            '20261019000003',
+            '00000000-0000-0000-0000-000000000001',
+            'Khó Khăn Đáng Giá Và Ma Sát Nhận Thức Tích Cực Theo Bjork',
+            'Hiệu suất biểu diễn nhất thời trong lúc học hoàn toàn không đồng nghĩa với năng lực lưu giữ bền vững. Việc cố tình đưa ma sát nhận thức vào thông qua luyện tập đan xen và gợi nhớ chủ động không có tài liệu là điều kiện tiên quyết để thúc đẩy tái cấu trúc nơ-ron sâu sắc và bảo toàn tri thức xuyên suốt các chu kỳ dài hạn.',
+            120,
+            'Cognitive Science',
+            'DRAFT'
+        )
+    ON CONFLICT (zettel_uid) DO NOTHING;
+
+    -- Chèn liên kết hai chiều giữa các nút hạt giống mẫu
+    INSERT INTO zettel_links (
+        source_zettel_uid, target_zettel_uid, link_type, connection_rationale
+    ) VALUES
+        (
+            '20261019000001',
+            '20261019000002',
+            'EXTENDS_PAST',
+            'Cả hai nguyên lý đều chỉ ra sự nguy hiểm của việc tối ưu hóa cục bộ ngắn hạn gây sụp đổ hệ thống dài hạn.'
+        ),
+        (
+            '20261019000002',
+            '20261019000003',
+            'SUPPORTS',
+            'Cơ chế phản hồi trễ trong hệ thống giải thích lý do tại sao ma sát nhận thức chỉ phát huy hiệu quả sau một khoảng trễ thời gian.'
+        ),
+        (
+            '20261019000003',
+            '20261019000001',
+            'BIOLOGICAL_MECHANISM',
+            'Cơ sở sinh học thần kinh của khó khăn đáng giá là nền tảng giải thích cho sự cần thiết của cơ chế ngắt mạch nợ nhận thức.'
+        )
+    ON CONFLICT (source_zettel_uid, target_zettel_uid) DO NOTHING;
+
+    -- Nâng cấp các nút hạt giống lên PUBLISHED
+    UPDATE permanent_zettels
+    SET state = 'PUBLISHED'
+    WHERE zettel_uid IN ('20261019000001', '20261019000002', '20261019000003');
+END $$;
 
 

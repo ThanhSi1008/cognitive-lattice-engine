@@ -134,6 +134,48 @@ export async function PUT(request: NextRequest) {
 
     const parsed = ZettelLinkSchema.parse(body);
 
+    // Kiểm tra và tự động khởi tạo seed node nếu target hoặc source chưa tồn tại trong permanent_zettels
+    // nhằm khắc phục triệt để lỗi Cold-Start Foreign Key khi người dùng liên kết với các Zettel hạt giống mẫu
+    const checkTargetRes = await db.query(
+      `SELECT zettel_uid FROM permanent_zettels WHERE zettel_uid = $1`,
+      [parsed.target_zettel_uid]
+    );
+
+    if (checkTargetRes.rows.length === 0) {
+      await db.query(
+        `INSERT INTO permanent_zettels (
+          zettel_uid, user_id, atomic_title, body_text, word_count, domain_category, state
+        ) VALUES ($1, $2, $3, $4, 120, 'System Dynamics', 'DRAFT')
+        ON CONFLICT (zettel_uid) DO NOTHING`,
+        [
+          parsed.target_zettel_uid,
+          body.user_id || "00000000-0000-0000-0000-000000000001",
+          `Khái Niệm Hạt Giống Nền Tảng: [[${parsed.target_zettel_uid}]]`,
+          `Nội dung kiến thức hạt giống mẫu được khởi tạo tự động làm điểm tựa liên kết hai chiều cho mạng lưới Zettelkasten nguyên tử. Đảm bảo cấu trúc tri thức luôn có điểm neo vững chắc.`,
+        ]
+      );
+    }
+
+    const checkSourceRes = await db.query(
+      `SELECT zettel_uid FROM permanent_zettels WHERE zettel_uid = $1`,
+      [parsed.source_zettel_uid]
+    );
+
+    if (checkSourceRes.rows.length === 0) {
+      await db.query(
+        `INSERT INTO permanent_zettels (
+          zettel_uid, user_id, atomic_title, body_text, word_count, domain_category, state
+        ) VALUES ($1, $2, $3, $4, 120, 'System Dynamics', 'DRAFT')
+        ON CONFLICT (zettel_uid) DO NOTHING`,
+        [
+          parsed.source_zettel_uid,
+          body.user_id || "00000000-0000-0000-0000-000000000001",
+          `Ghi Chú Đang Soạn Thảo: [[${parsed.source_zettel_uid}]]`,
+          `Bản ghi nháp Zettelkasten đang được kết nối mạng lưới đa miền trước khi hoàn thiện xuất bản nguyên tử. Đảm bảo toàn vẹn cấu trúc khóa ngoại trong cơ sở dữ liệu.`,
+        ]
+      );
+    }
+
     const res = await db.query(
       `INSERT INTO zettel_links (
         source_zettel_uid, target_zettel_uid, link_type, connection_rationale

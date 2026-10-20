@@ -7,6 +7,7 @@ import { Timer, Lock, Unlock, AlertCircle } from "lucide-react";
 interface PreReadingGateProps {
   conceptTitle: string;
   conceptContext: string;
+  activationContext?: string;
   sourceTextSnippet: string;
   onUnlocked: (hypothesisText: string) => void;
 }
@@ -14,6 +15,7 @@ interface PreReadingGateProps {
 export function PreReadingGate({
   conceptTitle,
   conceptContext,
+  activationContext,
   sourceTextSnippet,
   onUnlocked,
 }: PreReadingGateProps) {
@@ -50,10 +52,18 @@ export function PreReadingGate({
       <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="text-xs font-mono text-cyan-400 uppercase tracking-wider mb-1">
-            Cổng Đoán Trước (Phút 1–3) • RULE-04
+            Cổng Đoán Trước (Phút 1–3) • RULE-04 (Generation Effect)
           </div>
           <h2 className="text-xl font-bold text-white">{conceptTitle}</h2>
-          <p className="text-sm text-slate-400 mt-1 max-w-2xl">{conceptContext}</p>
+          <div className="text-xs text-slate-400 mt-1 font-mono">{conceptContext}</div>
+          {activationContext && (
+            <div className="mt-3 p-3.5 bg-cyan-950/40 border border-cyan-800/60 rounded-xl text-xs text-cyan-200 leading-relaxed font-sans flex items-start gap-2.5">
+              <span className="font-bold text-cyan-400 font-mono text-[11px] uppercase tracking-wider shrink-0 mt-0.5 px-2 py-0.5 rounded bg-cyan-900/60 border border-cyan-700/50">
+                💡 Câu Hỏi Kích Hoạt
+              </span>
+              <span className="italic">{activationContext}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-lg border border-slate-800">
